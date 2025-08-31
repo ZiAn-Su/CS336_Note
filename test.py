@@ -1,39 +1,3 @@
-# 项目介绍
-CS336课程笔记
-> 课程链接：https://github.com/ZiAn-Su/CS336_Note.git
-> 
-> 视频链接：https://www.youtube.com/watch?v=SQ3fZ1sAqXI&list=PLoROMvodv4rOY23Y0BoGoBGgQ1zmU_MT_
->
-> ![课程大纲](resources\course_design.png)
-# lecture 1
-> 课件：https://stanford-cs336.github.io/spring2025-lectures/?trace=var/traces/lecture_01.json
-
-## 关键点
-### scale law
-涌现：在不同规模的模型上测试few-shot少样本学习，在某个规模开始，准确率突然大幅提升
-
-> https://arxiv.org/pdf/2206.07682  
-> https://arxiv.org/pdf/2001.08361.pdf
-
-### 效率
-accuracy = efficiency x resources
-在大规模中，效率更重要
-> https://arxiv.org/abs/2005.04305  
-
-### 作业
-#### BPE
-> 阅读论文 https://arxiv.org/abs/1508.07909
->
-> 论文源码：https://github.com/rsennrich/subword-nmt
-
-**如何设置恰当的合并次数？**
-> 计算所有频率的中位数
-
-**如何存储子段**
-记录连续的最长子段，同时子段不能是整个单词
-
-**参考代码**
-```python
 import re, collections
 import statistics
 def get_stats(vocab): 
@@ -92,4 +56,3 @@ for i in range(num_merges):
     last_best=best_concat
     print(best)
 print(vocab)
-```
