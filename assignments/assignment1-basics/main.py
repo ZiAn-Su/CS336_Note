@@ -2,7 +2,8 @@ from tests.test_train_bpe import *
 import pickle
 
 from src.bpe_tokenizer import BPETokenizer
-
+from src.transformer import Linear
+import torch
 def max_token(counts:dict[tuple,int]):
     '''
     返回value最大的元素的key，如果多个元素的value相同，返回key最大的那个元素
@@ -17,9 +18,7 @@ def max_token(counts:dict[tuple,int]):
             max_keys.append(key)
     return max(max_keys)
 
-
-
-if __name__=="__main__":
+def test_tokenizer():
     #test_train_bpe()
     # with open('tests/_snapshots/test_train_bpe_special_tokens.pkl','rb') as f:
     #     snapshot=pickle.load(f)
@@ -53,3 +52,22 @@ Business or charity or both
     text1=tokenizer.decode(tokens)
     assert text==text1
     print(tokens)
+
+def test_Linear():
+    d_in=2
+    d_out=3
+    weights=torch.ones(3,2).float()
+    in_features=torch.tensor([1,2]).float()
+    linear_model=Linear(d_in,d_out)
+    # 保存权重到文件
+    #torch.save(linear_model.state_dict(), 'linear_weights.pth')
+    #weights1=torch.load('linear_weights.pth')
+    linear_model.load_state_dict({'weights':weights})
+    result=linear_model.forward(in_features)
+    return result
+
+
+
+
+if __name__=="__main__":
+    test_Linear()
