@@ -7,4 +7,4 @@
 > 
 > 视频链接：https://www.youtube.com/watch?v=SQ3fZ1sAqXI&list=PLoROMvodv4rOY23Y0BoGoBGgQ1zmU_MT_
 >
-> ![课程大纲](resources\course_design.png)
+> ![课程大纲](resources/course_design.png)
