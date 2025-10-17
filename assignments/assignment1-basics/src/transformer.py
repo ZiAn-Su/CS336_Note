@@ -13,6 +13,7 @@ class Linear(nn.Module):
         nn.init.trunc_normal_(self.weights,0,std,-3*std,3*std)
     
     def forward(self, input: Tensor) -> Tensor:
+        # 等价于input.matmul(self.weights.T)
         return input@self.weights.T
 
 class Embedding(nn.Module):   
@@ -26,3 +27,17 @@ class Embedding(nn.Module):
     def forward(self, token_ids: Tensor) -> Tensor:
         # return self.weights[token_ids] 或：
         return self.weights.index_select(0,token_ids.reshape(-1)).reshape(*token_ids.shape, self.embedding_dim)
+    
+class RMSNorm(nn.Module):
+    def __init__(self,d_model: int,eps: float=1e-5,device=None,dtype=None,):
+        super().__init__()
+        self.d_model=d_model
+        self.eps=eps
+        self.weights=nn.Parameter(torch.ones(d_model,device=device,dtype=dtype))
+    
+    def forward(self, input: Tensor) -> Tensor:
+        in_dtype = input.dtype
+        input = input.to(torch.float32)
+        deno=torch.sqrt(torch.sum(input**2,dim=2)/self.d_model+self.eps).unsqueeze(-1)
+        result=input.div(deno).mul(self.weights)
+        return result.to(in_dtype)
