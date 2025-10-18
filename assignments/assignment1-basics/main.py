@@ -2,7 +2,7 @@ from tests.test_train_bpe import *
 import pickle
 
 from src.bpe_tokenizer import BPETokenizer
-from src.transformer import Linear
+from src.transformer import *
 import torch
 def max_token(counts:dict[tuple,int]):
     '''
@@ -66,8 +66,13 @@ def test_Linear():
     result=linear_model.forward(in_features)
     return result
 
-
-
+def test_swiglu():
+    swiglu=SwiGLU(2,8)
+    torch.save(swiglu.state_dict(),'swiglu_weights.pth') 
+    weights1=torch.load('swiglu_weights.pth')
+    swiglu.load_state_dict(weights1)
+    print('ok')
 
 if __name__=="__main__":
-    test_Linear()
+    #test_Linear()
+    test_swiglu()

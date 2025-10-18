@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import math
-
 class Linear(nn.Module):
     def __init__(self,in_features: int,out_features: int,device=None,dtype=None,):
         super().__init__()
@@ -41,3 +40,16 @@ class RMSNorm(nn.Module):
         deno=torch.sqrt(torch.sum(input**2,dim=2)/self.d_model+self.eps).unsqueeze(-1)
         result=input.div(deno).mul(self.weights)
         return result.to(in_dtype)
+    
+class SwiGLU(nn.Module):
+    def __init__(self,d_model:int,d_ff:int,device=None,dtype=None):
+        super().__init__()
+        self.linear1=Linear(d_model,d_ff,device,dtype)
+        self.linear2=Linear(d_ff,d_model,device,dtype)
+        self.linear3=Linear(d_model,d_ff,device,dtype)
+    def forward(self,input: Tensor):
+        ret1=self.linear1.forward(input)
+        silu_t=ret1.mul(torch.sigmoid(ret1))
+        ret2=self.linear3.forward(input)
+        return self.linear2.forward(silu_t.mul(ret2))
+        
