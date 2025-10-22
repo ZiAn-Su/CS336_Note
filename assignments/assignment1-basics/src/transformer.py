@@ -52,4 +52,44 @@ class SwiGLU(nn.Module):
         silu_t=ret1.mul(torch.sigmoid(ret1))
         ret2=self.linear3.forward(input)
         return self.linear2.forward(silu_t.mul(ret2))
+
+class RoPE(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+        super().__init__()
+        seq_l = torch.arange(max_seq_len,device=device, dtype=torch.float32)  # shape: [n]
+        d_l = torch.arange(0,d_k,2, device=device,dtype=torch.float32)  # shape: [m]
+        ret = d_l/d_k
+        power_result = theta ** ret
+        # 使用广播计算所有组合的角度：L1[i] / L2[j]
+        angles = seq_l.unsqueeze(1) / power_result.unsqueeze(0)  # shape: [n, m]
         
+        # 计算三角函数
+        sin_vals = torch.sin(angles)
+        cos_vals = torch.cos(angles)
+        
+        # 构建矩阵序列 [n, m, 2, 2]
+        matrices = torch.stack([
+            torch.stack([cos_vals,-sin_vals], dim=-1),
+            torch.stack([sin_vals, cos_vals], dim=-1)
+        ], dim=-2)
+
+        self.register_buffer('rope',matrices,persistent=False)
+    def forward(self,x: torch.Tensor, token_positions: torch.Tensor):
+
+        batch_size, seq_len, d_k = x.shape
+        
+        # 重塑x为复数形式 [batch_size, seq_len, d_k/2, 2]
+        x_complex = x.reshape(batch_size, seq_len, d_k//2, 2)
+        
+        # 选择对应位置的旋转矩阵
+        rope_selected = self.rope[token_positions]  # [seq_len, d_k/2, 2, 2]
+        
+        # 为batch维度添加广播维度
+        rope_selected = rope_selected.unsqueeze(0)  # [1, seq_len, d_k/2, 2, 2]
+
+        # 应用旋转：矩阵乘法
+        # 需要调整维度以进行批量矩阵乘法
+        x_rotated = torch.einsum('bsdij,bsdj->bsdi', rope_selected, x_complex)
+        
+        # 重塑回原始形状
+        return x_rotated.reshape(batch_size, seq_len, d_k)

@@ -72,7 +72,68 @@ def test_swiglu():
     weights1=torch.load('swiglu_weights.pth')
     swiglu.load_state_dict(weights1)
     print('ok')
+def test_rope():
+    rope = RoPE(0.1,4,8)
+
+def test_einsum():
+    # 设置随机种子以便复现结果
+    torch.manual_seed(42)
+    
+    # 创建简单的测试数据
+    batch_size = 1
+    seq_len = 1
+    dim = 2
+    
+    # 创建输入张量 x_complex (bsd, num_heads, dim//2, 2)
+    # 这里我们假设 dim=4，所以每个头的复数维度是 2
+    x_complex = torch.randn(batch_size, seq_len,  dim//2, 2)
+    print("输入张量 x_complex 形状:", x_complex.shape)
+    print("x_complex[0,0,0]:", x_complex[0,0,0])
+    
+    # 创建旋转位置编码 rope_selected (bsd, num_heads, dim//2, 2, 2)
+    # 旋转矩阵的形式为 [[cosθ, -sinθ], [sinθ, cosθ]]
+    rope_selected = torch.zeros(batch_size, seq_len,  dim//2, 2, 2)
+    
+    # 为每个位置设置不同的旋转角度
+    for b in range(batch_size):
+        for s in range(seq_len):
+            for d in range(dim//2):
+                angle = (s + 1) * 0.1  # 简单的角度计算
+                cos_theta = torch.cos(torch.tensor(angle))
+                sin_theta = torch.sin(torch.tensor(angle))
+                rope_selected[b, s, d] = torch.tensor([
+                    [cos_theta, -sin_theta],
+                    [sin_theta, cos_theta]
+                ])
+    
+    print("旋转矩阵 rope_selected 形状:", rope_selected.shape)
+    print("rope_selected[0,0,0,0]:", rope_selected[0,0,0,0])
+    
+    # 使用 einsum 计算旋转后的结果
+    x_rotated = torch.einsum('bsdij,bsdj->bsdi', rope_selected, x_complex)
+    print("旋转后结果 x_rotated 形状:", x_rotated.shape)
+    print("x_rotated[0,0,0]:", x_rotated[0,0,0])
+    
+    # 手动验证第一个元素的计算
+    print("\n=== 手动验证第一个元素的计算 ===")
+    rope_mat = rope_selected[0,0,0]  # 形状 (2, 2)
+    x_vec = x_complex[0,0,0]         # 形状 (2,)
+    print("旋转矩阵:\n", rope_mat)
+    print("输入向量:", x_vec)
+    
+    # 手动矩阵乘法
+    manual_result = torch.matmul(rope_mat, x_vec)
+    print("手动计算结果:", manual_result)
+    print("einsum 计算结果:", x_rotated[0,0,0])
+    
+    # 验证两者是否相等
+    print("结果是否一致:", torch.allclose(manual_result, x_rotated[0,0,0,0]))
+    
+    return x_rotated
+
 
 if __name__=="__main__":
+    test_einsum()
+    test_rope()
     #test_Linear()
     test_swiglu()

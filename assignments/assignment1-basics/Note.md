@@ -139,3 +139,9 @@ Liwei Wang, and Tie-Yan Liu. On layer normalization in the Transformer architect
 | <img src="./resources/SiLU.png" style="width: auto; height: 50;"> | <img src="./resources/GLU.png" style="width: auto; height: 50;"> |
 FFN 
 <img src="./resources/FFN.png" style="width: auto; height: 50;">
+
+### Relative Positional Embeddings
+- 输入batch, seq_len, d_k的输入，RoPE对seq_len维的每一个i[0,seq_len)，d_k维的每一个k[0,d_k,step=2),构建旋转矩阵Rik，然后 Rik * d_k维k对应的两个元素。
+- 旋转矩阵的构建方法如下：    
+<img src="./resources/rope_angle.jpg" style="width: auto; height: 50;">
+<img src="./resources/rope_rotate_matrix.jpg" style="width: auto; height: 50;">
