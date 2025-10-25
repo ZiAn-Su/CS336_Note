@@ -141,7 +141,14 @@ FFN
 <img src="./resources/FFN.png" style="width: auto; height: 50;">
 
 ### Relative Positional Embeddings
-- 输入batch, seq_len, d_k的输入，RoPE对seq_len维的每一个i[0,seq_len)，d_k维的每一个k[0,d_k,step=2),构建旋转矩阵Rik，然后 Rik * d_k维k对应的两个元素。
+- 作用：对输入向量进行旋转，每两个元素看作为一个点坐标，旋转对应角度
+- 旋转矩阵推导：
+```
+    x=rcos(a1),y=rsin(a1);
+    x'=rcos(a1+t1)=r(cos(a1)cos(t1)-sin(a1)sin(t1))=xcos(t1)-ysin(t1)
+    y'=rsin(a1+t1)=r(sin(a1)cos(t1)+cos(a1)sin(t1))=ycos(t1)+xsin(t1)
+```
+- 计算方法：输入batch, seq_len, d_k的输入，RoPE对seq_len维的每一个i[0,seq_len)，d_k维的每一个k[0,d_k,step=2),构建旋转矩阵Rik，然后 Rik * d_k维k对应的两个元素。
 - 旋转矩阵的构建方法如下：    
 <img src="./resources/rope_angle.jpg" style="width: auto; height: 50;">
 <img src="./resources/rope_rotate_matrix.jpg" style="width: auto; height: 50;">
