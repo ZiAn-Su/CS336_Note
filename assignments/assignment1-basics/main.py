@@ -3,6 +3,7 @@ import pickle
 
 from src.bpe_tokenizer import BPETokenizer
 from src.transformer import *
+from src.utils import *
 import torch
 def max_token(counts:dict[tuple,int]):
     '''
@@ -131,8 +132,13 @@ def test_einsum():
     
     return x_rotated
 
+def test_softmax():
+    input = torch.randn(2,3,4)
+    output = softmax(input,2)
+    print('x')
 
 if __name__=="__main__":
+    test_softmax()
     test_einsum()
     test_rope()
     #test_Linear()
