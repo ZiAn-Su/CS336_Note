@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import math
+from .utils import *
+
 class Linear(nn.Module):
     def __init__(self,in_features: int,out_features: int,device=None,dtype=None,):
         super().__init__()
@@ -93,3 +95,28 @@ class RoPE(nn.Module):
         
         # 重塑回原始形状
         return x_rotated.reshape(batch_size, seq_len, d_k)
+
+class MultiHeadAtten(nn.Module):
+    def __init__(self,d_model:int,num_heads:int,device=None,dtype=None):
+        super().__init__()
+        self.d_model=d_model
+        self.num_heads=num_heads
+        self.q_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.k_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.v_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.o_proj_weight=Linear(d_model,d_model,device,dtype)
+    def forward(self,input: Tensor):
+        batch,seq_len,_=input.shape
+        Q=self.q_proj_weight.forward(input)
+        K=self.k_proj_weight.forward(input)
+        V=self.v_proj_weight.forward(input)
+        multi_q=Q.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
+        multi_k=K.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
+        multi_v=V.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
+        mask=torch.tril(torch.ones(seq_len, seq_len)).bool()
+        attn_qkv=scaled_dot_product_attention(multi_q,multi_k,multi_v,mask)
+        attn_qkv=attn_qkv.transpose(1,2).contiguous().view(batch,seq_len,-1)
+        return self.o_proj_weight.forward(attn_qkv)
+
+    
+
