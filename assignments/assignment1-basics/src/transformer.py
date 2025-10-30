@@ -43,7 +43,7 @@ class RMSNorm(nn.Module):
         result=input.div(deno).mul(self.weights)
         return result.to(in_dtype)
     
-class SwiGLU(nn.Module):
+class FFNSwiGLU(nn.Module):
     def __init__(self,d_model:int,d_ff:int,device=None,dtype=None):
         super().__init__()
         self.linear1=Linear(d_model,d_ff,device,dtype)
@@ -58,6 +58,9 @@ class SwiGLU(nn.Module):
 class RoPE(nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
         super().__init__()
+        self.theta=theta
+        self.d_k=d_k
+        self.max_seq_len=max_seq_len
         seq_l = torch.arange(max_seq_len,device=device, dtype=torch.float32)  # shape: [n]
         d_l = torch.arange(0,d_k,2, device=device,dtype=torch.float32)  # shape: [m]
         ret = d_l/d_k
@@ -76,25 +79,25 @@ class RoPE(nn.Module):
         ], dim=-2)
 
         self.register_buffer('rope',matrices,persistent=False)
-    def forward(self,x: torch.Tensor, token_positions: torch.Tensor):
+    def forward(self,x: torch.Tensor, token_positions: torch.Tensor=None):
 
-        batch_size, seq_len, d_k = x.shape
+        *batch_dims, seq_len, d_k = x.shape
         
-        # 重塑x为复数形式 [batch_size, seq_len, d_k/2, 2]
-        x_complex = x.reshape(batch_size, seq_len, d_k//2, 2)
+        # 重塑x为复数形式 [*batch_dims, seq_len, d_k/2, 2]
+        x_complex = x.reshape(*batch_dims, seq_len, d_k//2, 2)
         
         # 选择对应位置的旋转矩阵
+        if token_positions == None:
+            token_positions=torch.arange(seq_len)
+        token_positions=token_positions.flatten()
         rope_selected = self.rope[token_positions]  # [seq_len, d_k/2, 2, 2]
-        
-        # 为batch维度添加广播维度
-        rope_selected = rope_selected.unsqueeze(0)  # [1, seq_len, d_k/2, 2, 2]
 
         # 应用旋转：矩阵乘法
         # 需要调整维度以进行批量矩阵乘法
-        x_rotated = torch.einsum('bsdij,bsdj->bsdi', rope_selected, x_complex)
+        x_rotated = torch.einsum('sdij,...sdj->...sdi', rope_selected, x_complex)
         
         # 重塑回原始形状
-        return x_rotated.reshape(batch_size, seq_len, d_k)
+        return x_rotated.reshape(*batch_dims, seq_len, d_k)
 
 class MultiHeadAtten(nn.Module):
     def __init__(self,d_model:int,num_heads:int,device=None,dtype=None):
@@ -118,5 +121,41 @@ class MultiHeadAtten(nn.Module):
         attn_qkv=attn_qkv.transpose(1,2).contiguous().view(batch,seq_len,-1)
         return self.o_proj_weight.forward(attn_qkv)
 
-    
+class MultiHeadAttenRoPE(nn.Module):
+    def __init__(self,d_model:int,num_heads:int,max_seq_len: int,theta: float,device=None,dtype=None):
+        super().__init__()
+        self.rope=RoPE(theta,d_model//num_heads,max_seq_len,device=device)
+        self.d_model=d_model
+        self.num_heads=num_heads
+        self.q_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.k_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.v_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.o_proj_weight=Linear(d_model,d_model,device,dtype)
+    def forward(self,input: Tensor,token_positions:Tensor=None):
+        batch,seq_len,_=input.shape
+        Q=self.q_proj_weight.forward(input)
+        K=self.k_proj_weight.forward(input)
+        V=self.v_proj_weight.forward(input)
+        multi_q=Q.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
+        multi_q=self.rope.forward(multi_q,token_positions)
+        multi_k=K.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
+        multi_k=self.rope.forward(multi_k,token_positions)
+        multi_v=V.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
+        mask=torch.tril(torch.ones(seq_len, seq_len)).bool()
+        attn_qkv=scaled_dot_product_attention(multi_q,multi_k,multi_v,mask)
+        attn_qkv=attn_qkv.transpose(1,2).contiguous().view(batch,seq_len,-1)
+        return self.o_proj_weight.forward(attn_qkv)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self,d_model:int,num_heads: int,d_ff:int,max_seq_len: int,theta: float,device=None,dtype=None):
+        super().__init__()
+        self.attn=MultiHeadAttenRoPE(d_model,num_heads,max_seq_len,theta,device,dtype)
+        self.norm1=RMSNorm(d_model,device=device,dtype=dtype)
+        self.norm2=RMSNorm(d_model,device=device,dtype=dtype)
+        self.ffn=FFNSwiGLU(d_model,d_ff,device=device,dtype=dtype)
+    def forward(self,input: Tensor):
+        ret_block_attn=input+self.attn.forward(self.norm1.forward(input))
+        ret_block_ffn=ret_block_attn+self.ffn.forward(self.norm2.forward(ret_block_attn))
+        return ret_block_ffn
 

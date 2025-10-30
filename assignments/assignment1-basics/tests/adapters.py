@@ -87,7 +87,7 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    swiglu=SwiGLU(d_model,d_ff)
+    swiglu=FFNSwiGLU(d_model,d_ff)
     swiglu.load_state_dict({'linear1.weights':w1_weight,'linear2.weights':w2_weight,'linear3.weights':w3_weight})
     return swiglu.forward(in_features)
 
@@ -185,7 +185,9 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mlt_atten=MultiHeadAttenRoPE(d_model,num_heads,max_seq_len,theta)
+    mlt_atten.load_state_dict({'q_proj_weight.weights':q_proj_weight,'k_proj_weight.weights':k_proj_weight,'v_proj_weight.weights':v_proj_weight,'o_proj_weight.weights':o_proj_weight})
+    return mlt_atten.forward(in_features,token_positions).detach().numpy()
 
 
 def run_rope(
@@ -282,8 +284,18 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
-
+    transformer_block=TransformerBlock(d_model,num_heads,d_ff,max_seq_len,theta)
+    transformer_block.load_state_dict({'attn.q_proj_weight.weights':weights['attn.q_proj.weight'],
+                                       'attn.k_proj_weight.weights':weights['attn.k_proj.weight'],
+                                       'attn.v_proj_weight.weights':weights['attn.v_proj.weight'],
+                                       'attn.o_proj_weight.weights':weights['attn.output_proj.weight'],
+                                       'norm1.weights':weights['ln1.weight'],
+                                       'norm2.weights':weights['ln2.weight'],
+                                       'ffn.linear1.weights':weights['ffn.w1.weight'],
+                                       'ffn.linear2.weights':weights['ffn.w2.weight'],
+                                       'ffn.linear3.weights':weights['ffn.w3.weight'],
+                                       })
+    return transformer_block.forward(in_features)
 
 def run_transformer_lm(
     vocab_size: int,

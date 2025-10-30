@@ -137,7 +137,24 @@ def test_softmax():
     output = softmax(input,2)
     print('x')
 
+import numpy as np
+def test_npz():
+    # 加载 .npz 文件
+    data = np.load('tests/_snapshots/test_multihead_self_attention_with_rope.npz')
+    # 查看每个数组的详细信息
+    for key in data.files:
+        array = data[key]
+        print(f"\n数组 '{key}':")
+        print(f"  形状: {array.shape}")
+        print(f"  数据类型: {array.dtype}")
+        print(f"  数值范围: [{np.min(array):.6f}, {np.max(array):.6f}]")
+        print(f"  前几个元素: {array.flatten()[:5]}")  # 显示前5个元素
+
+    # 关闭文件
+    data.close()
+
 if __name__=="__main__":
+    test_npz()
     test_softmax()
     test_einsum()
     test_rope()

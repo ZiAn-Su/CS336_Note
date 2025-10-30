@@ -155,3 +155,6 @@ FFN
 
 ### Scaled Dot-Product Attention
 - softmax:输入实数向量，输出每个元素的概率，所有元素概率和为1；为什么使用e^x计算概率分布，而不是直接计算或用x^2的其他函数，1 输出为正数，输入正负都可以 2 函数单调 3 容易求导
+
+
+### 3.6 The Full Transformer LM
