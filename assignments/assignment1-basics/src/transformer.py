@@ -146,7 +146,6 @@ class MultiHeadAttenRoPE(nn.Module):
         attn_qkv=attn_qkv.transpose(1,2).contiguous().view(batch,seq_len,-1)
         return self.o_proj_weight.forward(attn_qkv)
 
-
 class TransformerBlock(nn.Module):
     def __init__(self,d_model:int,num_heads: int,d_ff:int,max_seq_len: int,theta: float,device=None,dtype=None):
         super().__init__()
@@ -159,3 +158,18 @@ class TransformerBlock(nn.Module):
         ret_block_ffn=ret_block_attn+self.ffn.forward(self.norm2.forward(ret_block_attn))
         return ret_block_ffn
 
+class TransformerLM(nn.Module):
+    def __init__(self, vocab_size: int,context_length: int,d_model: int,num_layers: int,num_heads: int,d_ff: int,rope_theta: float):
+        super().__init__()
+        self.embedding=Embedding(vocab_size,d_model)
+        self.tfm_block_list=nn.ModuleList([TransformerBlock(d_model,num_heads,d_ff,context_length,rope_theta) for i in range(num_layers)])
+        self.norm=RMSNorm(d_model)
+        self.linear=Linear(d_model,vocab_size)
+    
+    def forward(self,in_indices:Tensor):
+        features=self.embedding(in_indices)
+        for block in self.tfm_block_list:
+            features=block(features)
+        features=self.norm(features)
+        vocab_features=self.linear(features)
+        return softmax(vocab_features,-1)
