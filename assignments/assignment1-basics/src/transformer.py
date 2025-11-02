@@ -172,4 +172,5 @@ class TransformerLM(nn.Module):
             features=block(features)
         features=self.norm(features)
         vocab_features=self.linear(features)
-        return softmax(vocab_features,-1)
+        return vocab_features
+        #return softmax(vocab_features,-1)
