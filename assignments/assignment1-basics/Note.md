@@ -158,3 +158,5 @@ FFN
 
 
 ### 3.6 The Full Transformer LM
+参数量：2,127,057,600   需要的存储空间为：3.96 Gb
+vocab_size x d_model + num_layers(2 x d_model + 4 x d_model x d_model + 3 x d_model x d_ff) + d_model + vocab_size x d_model

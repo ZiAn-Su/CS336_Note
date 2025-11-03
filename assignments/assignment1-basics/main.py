@@ -153,10 +153,31 @@ def test_npz():
     # 关闭文件
     data.close()
 
+def test_count_para():
+    vocab_size=50257
+    context_length=1024
+    d_model=1600
+    num_layers=48
+    num_heads=25
+    d_ff=6400
+    rope_theta=0.2
+    model = TransformerLM(vocab_size,context_length,d_model,num_layers,num_heads,d_ff,rope_theta)
+    
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Total parameters: {total_params:,}")
+
+    total_params = 0
+    for name, module in model.named_modules():
+        if len(list(module.parameters())) > 0:  # 只显示有参数的模块
+            num_params = sum(p.numel() for p in module.parameters())
+            total_params += num_params
+            print(f"{name:40} | {num_params:>10,} parameters")
+
 if __name__=="__main__":
-    test_npz()
-    test_softmax()
-    test_einsum()
-    test_rope()
-    #test_Linear()
-    test_swiglu()
+    test_count_para()
+    # test_npz()
+    # test_softmax()
+    # test_einsum()
+    # test_rope()
+    # test_Linear()
+    # test_swiglu()
