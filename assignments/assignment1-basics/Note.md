@@ -158,5 +158,23 @@ FFN
 
 
 ### 3.6 The Full Transformer LM
-参数量：2,127,057,600   需要的存储空间为：3.96 Gb
+1. 参数量：2,127,057,600   单精度需要的存储空间为：7.92 Gb
 vocab_size x d_model + num_layers(2 x d_model + 4 x d_model x d_model + 3 x d_model x d_ff) + d_model + vocab_size x d_model
+2. 计算方法如下，正确性未知；d_model比较大时Linear计算量多，seq_len大时，scaled_dot_product_attention计算量大
+```
+TransformerLM   
+    TransformerBlock    
+        MultiHeadAttenRoPE:
+            RoPE:batch*seq_len*d_k/2*6
+                =batch*seq_len*d_model/num_heads*3*2
+            Linear:batch*seq_len*2*in_feature*out_feature
+                =batch*seq_len*2*d_model*d_model*4  
+            scaled_dot_product_attention:Q*K*V
+                =batch*seq_len*seq_len*2*d_model/num_heads+batch*seq_len*d_model/num_heads*2*seq_len
+                =4*batch*seq_len*seq_len*d_model/num_heads
+        RMSNorm:batch*seq_len*3*d_model*2
+        FFNSwiGLU:batch*seq_len*2*d_model*d_ff*3
+    RMSNorm:batch*seq_len*3*d_model
+    Linear:batch*seq_len*2*d_model*vocab_size
+```
+    

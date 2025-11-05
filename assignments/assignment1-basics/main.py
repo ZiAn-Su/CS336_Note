@@ -1,10 +1,12 @@
 from tests.test_train_bpe import *
 import pickle
-
+import numpy as np
 from src.bpe_tokenizer import BPETokenizer
 from src.transformer import *
 from src.utils import *
 import torch
+from fvcore.nn import FlopCountAnalysis, parameter_count
+
 def max_token(counts:dict[tuple,int]):
     '''
     返回value最大的元素的key，如果多个元素的value相同，返回key最大的那个元素
@@ -68,7 +70,7 @@ def test_Linear():
     return result
 
 def test_swiglu():
-    swiglu=SwiGLU(2,8)
+    swiglu=FFNSwiGLU(2,8)
     torch.save(swiglu.state_dict(),'swiglu_weights.pth') 
     weights1=torch.load('swiglu_weights.pth')
     swiglu.load_state_dict(weights1)
@@ -137,7 +139,7 @@ def test_softmax():
     output = softmax(input,2)
     print('x')
 
-import numpy as np
+
 def test_npz():
     # 加载 .npz 文件
     data = np.load('tests/_snapshots/test_multihead_self_attention_with_rope.npz')
@@ -171,9 +173,46 @@ def test_count_para():
         if len(list(module.parameters())) > 0:  # 只显示有参数的模块
             num_params = sum(p.numel() for p in module.parameters())
             total_params += num_params
+
             print(f"{name:40} | {num_params:>10,} parameters")
 
+
+def profile_with_torch_profiler(model, input):
+    with torch.profiler.profile(
+        activities=[torch.profiler.ProfilerActivity.CPU],
+        record_shapes=True,
+        profile_memory=True,
+        with_flops=True
+    ) as prof:
+        output = model(input)
+    
+    print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+    return prof
+
+
+def test_count_flops():
+    vocab_size=50257
+    context_length=1024
+    d_model=1600
+    num_layers=48
+    num_heads=25
+    d_ff=6400
+    rope_theta=0.2
+    model = TransformerLM(vocab_size,context_length,d_model,num_layers,num_heads,d_ff,rope_theta)
+    
+    # 使用PyTorch profiler
+    input = torch.randint(1, 1000, (1, 12))
+    prof = profile_with_torch_profiler(model, input)
+
+    #input = torch.randint(1, 1000, (1, 12)).to(next(model.parameters()).device)
+    flops = FlopCountAnalysis(model, input)
+    params = parameter_count(model)
+
+    print(f"FLOPs: {flops.total():,}")
+    print(f"Parameters: {params['']:,}")
+
 if __name__=="__main__":
+    test_count_flops()
     test_count_para()
     # test_npz()
     # test_softmax()
