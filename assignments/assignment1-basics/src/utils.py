@@ -72,24 +72,14 @@ def convert_transformer_lm_weights(state_dict):
     return new_state_dict
 
 def cross_entropy(inputs:Tensor, targets:Tensor):
-    # max_ele=torch.max(inputs)
-    # in_features=inputs-max_ele
-    # tar_score=in_features[torch.arange(targets.shape[0]),targets]
-    # # log(e^(x1-xi)+e^(x2-xi)+...+e^(xn-xi))
-    # x_x=in_features-tar_score.unsqueeze(-1)
-    # c_e=torch.log(torch.exp(x_x).sum(-1))
-
-    max_ele=torch.max(inputs.to(torch.float64))
+    max_ele=torch.max(inputs, dim=-1, keepdim=True)[0]
     in_features=inputs-max_ele
     exp_ele=torch.exp(in_features)
     sum_dim=exp_ele.sum(-1)
     tar_score=in_features[torch.arange(targets.shape[0]),targets]
     c_e=torch.log(sum_dim)-tar_score
-
-    # 计算概率、计算log求平均值
-    # sfm_in=softmax(inputs,-1)[torch.arange(targets.shape[0]),targets]
-    # c_e=-torch.log(sfm_in)
-    return c_e.mean().to(torch.float32)
+    clean_data = torch.where(torch.isinf(c_e), torch.tensor(float('nan')), c_e)
+    return clean_data.nanmean()
 
 class SGD(torch.optim.Optimizer):
     def __init__(self, params, lr=1e-3):

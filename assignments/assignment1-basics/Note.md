@@ -178,3 +178,12 @@ TransformerLM
     Linear:batch*seq_len*2*d_model*vocab_size
 ```
     
+### 4.1 Cross-entropy loss
+- 公式：loss = ∑-P_tar[i]*log(P_pred[i]) 
+- 单目标公式：对于单目标而言，tar向量只有一个位置是1，其他均为0，公式变为-log(P_pred[i])
+- 实际实现：
+    1 P_pred通过softmax计算，即-log(e^pred[i]/(∑ e^pred[i]))
+    2 为防止e^pred[i]超上界，pred[i]都会减去最大值，变为 <=0 的数
+    3 公式简化：-log(e^pred[t]/(∑ e^pred[i])) = log(∑ e^pred[i]) - pred[t]
+    4 为防止e^pred[i]超下界后，计算均值为-inf，计算均值时，只计算结果不为-inf的数据
+- 总是数值出范围：原因是torch.max求取了全局最大值而不是每个batch的最大值
