@@ -101,6 +101,16 @@ class SGD(torch.optim.Optimizer):
                 p.data -= lr / math.sqrt(t + 1) * grad # Update weight tensor in-place.
                 state["t"] = t + 1 # Increment iteration number.
         return loss
+# 测试SGD
+# weights = torch.nn.Parameter(5 * torch.randn((10, 10)))
+# opt = SGD([weights], lr=1)
+# for t in range(100):
+#     opt.zero_grad() # Reset the gradients for all learnable parameters.
+#     loss = (weights**2).mean() # Compute a scalar loss value.
+#     print(loss.cpu().item())
+#     loss.backward() # Run backward pass, which computes gradients.
+#     opt.step() # Run optimizer step.
+
 
 class AdamW(torch.optim.Optimizer):
     def __init__(self, params, lr=1e-3,weight_decay=0.01,betas=(0.9, 0.999),eps=1e-8,):
@@ -123,18 +133,16 @@ class AdamW(torch.optim.Optimizer):
                 grad = p.grad.data # Get the gradient of loss with respect to p.
                 h_m = state.get("m", torch.zeros_like(p)) # 过去的一阶矩
                 h_v = state.get("v", torch.zeros_like(p)) # 过去的二阶矩
-                m=beta1*h_m+(1-beta1)*grad
-                v=beta2*torch.pow(h_v,2)+(1-beta2)*torch.pow(grad,2)
+                t = state.get("t", 1) # 迭代次数
                 
-                p.data -= lr / math.sqrt(t + 1) * grad # Update weight tensor in-place.
-                state["t"] = t + 1 # Increment iteration number.
+                m=beta1*h_m+(1-beta1)*grad
+                v=beta2*h_v+(1-beta2)*torch.pow(grad,2)
+                lr_t=lr*math.sqrt(1-beta2**t)/(1-beta1**t)
+
+                p.data = p.data - lr*weight_decay*p.data  # 注意，此处与教材上不同，先进行权重衰减，后进行权重更新；参考了torch.optim.adamw.AdamW的说明
+                p.data -= lr_t * m / (v.sqrt()+eps)                
+                state["t"] = t + 1 
+                state["m"] = m
+                state["v"] = v
         return loss
 
-weights = torch.nn.Parameter(5 * torch.randn((10, 10)))
-opt = SGD([weights], lr=1)
-for t in range(100):
-    opt.zero_grad() # Reset the gradients for all learnable parameters.
-    loss = (weights**2).mean() # Compute a scalar loss value.
-    print(loss.cpu().item())
-    loss.backward() # Run backward pass, which computes gradients.
-    opt.step() # Run optimizer step.
