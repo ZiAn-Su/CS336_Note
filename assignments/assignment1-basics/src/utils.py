@@ -1,6 +1,9 @@
 import torch
 from torch import Tensor
 import math 
+from collections.abc import Callable, Iterable
+from typing import Optional
+
 def softmax(in_features: Tensor, dim: int) -> Tensor:
     max_ele=torch.max(in_features)
     in_features=in_features-max_ele
@@ -87,3 +90,61 @@ def cross_entropy(inputs:Tensor, targets:Tensor):
     # sfm_in=softmax(inputs,-1)[torch.arange(targets.shape[0]),targets]
     # c_e=-torch.log(sfm_in)
     return c_e.mean().to(torch.float32)
+
+class SGD(torch.optim.Optimizer):
+    def __init__(self, params, lr=1e-3):
+        if lr < 0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        defaults = {"lr": lr}
+        super().__init__(params, defaults)
+
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"] # Get the learning rate.
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                state = self.state[p] # Get state associated with p.
+                t = state.get("t", 0) # Get iteration number from the state, or initial value.
+                grad = p.grad.data # Get the gradient of loss with respect to p.
+                p.data -= lr / math.sqrt(t + 1) * grad # Update weight tensor in-place.
+                state["t"] = t + 1 # Increment iteration number.
+        return loss
+
+class AdamW(torch.optim.Optimizer):
+    def __init__(self, params, lr=1e-3,weight_decay=0.01,betas=(0.9, 0.999),eps=1e-8,):
+        if lr < 0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        defaults = {"lr": lr,"weight_decay":weight_decay,"betas":betas,"eps":eps}
+        super().__init__(params, defaults)
+
+    def step(self, closure: Optional[Callable] = None):
+        loss = None if closure is None else closure()
+        for group in self.param_groups:
+            lr = group["lr"] # Get the learning rate.
+            weight_decay=group["weight_decay"]
+            (beta1,beta2)=group["betas"]
+            eps=group["eps"]
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                state = self.state[p] # Get state associated with p.
+                grad = p.grad.data # Get the gradient of loss with respect to p.
+                h_m = state.get("m", torch.zeros_like(p)) # 过去的一阶矩
+                h_v = state.get("v", torch.zeros_like(p)) # 过去的二阶矩
+                m=beta1*h_m+(1-beta1)*grad
+                v=beta2*torch.pow(h_v,2)+(1-beta2)*torch.pow(grad,2)
+                
+                p.data -= lr / math.sqrt(t + 1) * grad # Update weight tensor in-place.
+                state["t"] = t + 1 # Increment iteration number.
+        return loss
+
+weights = torch.nn.Parameter(5 * torch.randn((10, 10)))
+opt = SGD([weights], lr=1)
+for t in range(100):
+    opt.zero_grad() # Reset the gradients for all learnable parameters.
+    loss = (weights**2).mean() # Compute a scalar loss value.
+    print(loss.cpu().item())
+    loss.backward() # Run backward pass, which computes gradients.
+    opt.step() # Run optimizer step.
