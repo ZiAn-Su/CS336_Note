@@ -176,3 +176,25 @@ def get_lr_cosine_schedule(
         return min_learning_rate+0.5*(1+math.cos((it-warmup_iters)/(cosine_cycle_iters-warmup_iters)*math.pi))*(max_learning_rate-min_learning_rate)
     else:
         return min_learning_rate
+
+def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float):
+    '''
+    梯度裁剪，当所有梯度的二范数大于最大值时，按照最大值/二范数进行缩放
+    '''
+    # 计算二范数，判断是否大于max_l2_norm
+    total_norm = 0.0
+    for param in parameters:
+        if param.grad is not None:
+            param_norm = param.grad.data.norm(2)  # L2范数
+            total_norm += param_norm.item() ** 2
+    
+    total_norm = total_norm ** 0.5  # 开方得到总L2范数
+    
+    # 如果梯度范数超过最大值，按比例缩放
+    clip_coef = max_l2_norm / (total_norm + 1e-6)
+    
+    if clip_coef < 1:
+        for param in parameters:
+            if param.grad is not None:
+                param.grad.data.mul_(clip_coef)
+    return 
