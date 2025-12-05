@@ -10,41 +10,46 @@ from transformer import *
 from utils import *
 @dataclass
 class TrainingConfig:
-    # --- 模型超参数 ---
+
+    # --- 模型参数 ---
     vocab_size: int = 10000      # 词汇表数量
     context_length: int = 16     # 一次处理的最大token数
     d_model: int = 64            # 特征维度（嵌入模型维度及其他层）
     num_layers: int = 3        # Transformer层的数量
     num_heads: int = 4       # 多头注意力头数
-    d_ff: int = 128              # 前馈神经网络的
+    d_ff: int = 128              # 前馈神经网络的维度
     rope_theta: float = 10000.0        # rope旋转位置编码的theta值
 
-    # --- 优化器与调度器 ---
+    # --- 训练和优化器参数 ---
+    batch_size: int = 16        # 训练 batch size
     max_iters: int = 600000     # 总迭代次数
     learning_rate: float = 0.001 # max learning rate
     weight_decay: float = 0.01
-    beta1: float = 0.9
-    beta2: float = 0.99
+    beta1: float = 0.9      # 一阶矩系数
+    beta2: float = 0.99     # 二阶矩系数
     eps: float= 1e-8
     max_norm: float = 0.01      # 梯度裁剪的最大二范数
     
     # --- 学习率调度 ---
-    warmup_iters: int = 2000    # 预热步数
-    lr_decay_iters: int = 600000 # 衰减步数 (通常等于 max_iters)
-    min_lr: float = 6e-5        # 最小学习率 (通常是 lr 的 10%)
+    min_lr: float = 0.0001      # 最小学习率 (通常是 lr 的 10%)
+    warmup_iters: int = 100    # 预热步数
+    cosine_cycle_iters: int = 1000   # cos步数
     
-    # --- 系统与数据 ---
-    batch_size: int = 64        # 训练 batch size
-    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-    
-    # --- 路径与日志 ---
-    out_dir: str = 'out_checkpoints'
-    data_dir: str = 'data/shakespeare' # 假设数据在此
+    # --- 数据和路径 ---
+    data_dir: str = 'data' # 数据路径
+    checkpoint_dir: str = 'checkpoints' # 检查点路径
+    run_name: str = f'run_{time.strftime("%Y%m%d_%H%M%S")}' # 训练任务的名称
+
+    # --- 日志和评估 ---
     eval_interval: int = 2000   # 每隔多少步验证一次
     log_interval: int = 100     # 每隔多少步打印一次日志
     eval_iters: int = 200       # 验证时跑多少个 batch 来估算 loss
     always_save_checkpoint: bool = True # 是否总是保存最好的模型
+
+    # --- 运行环境 ---
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+    resume: bool = False 
 
 def train(model, optimizer, config):
     # 1. 准备工作

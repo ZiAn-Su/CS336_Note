@@ -2,82 +2,102 @@ import os
 import time
 import argparse
 from contextlib import nullcontext
+from dataclasses import dataclass
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
+from transformer import *
+from utils import *
 from torch.optim.lr_scheduler import CosineAnnealingLR
-
-# 假设您的模型定义在 model.py 中
-# from model import TransformerLM, ModelConfig
-
-# --- 为了让这个脚本可以独立运行，我们先定义一个简单的占位模型 ---
-# 请将其替换为您自己的模型实现
-class ModelConfig:
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
-
-class TransformerLM(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        # 一个简单的示例模型
-        self.embedding = nn.Embedding(config.vocab_size, config.n_embd)
-        self.linear = nn.Linear(config.n_embd, config.vocab_size)
-        print(f"Model initialized with vocab size: {config.vocab_size}")
-
-    def forward(self, idx, targets=None):
-        B, T = idx.size()
-        assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"
-        
-        tok_emb = self.embedding(idx) # (B, T, n_embd)
-        logits = self.linear(tok_emb) # (B, T, vocab_size)
-
-        loss = None
-        if targets is not None:
-            loss = nn.functional.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-        
-        return logits, loss
-# --- 占位模型结束 ---
-
 
 # --- 1. 参数配置 (Configuration) ---
 def get_args():
     parser = argparse.ArgumentParser(description='Train a Transformer Language Model')
+
+    # 模型参数
+    parser.add_argument('--vocab_size', type=int, default=10000, help='词汇表数量')
+    parser.add_argument('--context_length', type=int, default=16, help='一次处理的最大token数')
+    parser.add_argument('--d_model', type=int, default=64, help='特征维度（嵌入模型维度及其他层）')
+    parser.add_argument('--num_layers', type=int, default=3, help='Transformer层的数量')
+    parser.add_argument('--num_heads', type=int, default=4, help='多头注意力头数')
+    parser.add_argument('--d_ff', type=int, default=128, help='前馈神经网络的维度')
+    parser.add_argument('--rope_theta', type=float, default=10000.0, help='rope旋转位置编码的theta值')
+
+    # 训练和优化器参数
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
+    parser.add_argument('--max_iters', type=int, default=600000, help='总迭代次数')
+    parser.add_argument('--learning_rate', type=float, default=0.001, help='Max learning rate')
+    parser.add_argument('--weight_decay', type=float, default=0.01, help='Weight decay')
+    parser.add_argument('--beta1', type=float, default=0.9, help='一阶矩系数')
+    parser.add_argument('--beta2', type=float, default=0.99, help='二阶矩系数')
+    parser.add_argument('--eps', type=float, default=1e-8, help='小数防止数据无效')
+    parser.add_argument('--max_norm', type=float, default=0.01, help='梯度裁剪的最大二范数')
+    
+    # LR Scheduler
+    parser.add_argument('--min_lr', type=float, default=0.0001, help='Minimum learning rate')
+    parser.add_argument('--warmup_iters', type=int, default=100, help='the number of iterations to linearly warm-up')
+    parser.add_argument('--cosine_cycle_iters', type=int, default=1000, help='the number of cosine annealing iterations')
+    
     # 数据和路径
     parser.add_argument('--data_dir', type=str, default='data', help='Directory containing train.bin and val.bin')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='Directory to save checkpoints')
     parser.add_argument('--run_name', type=str, default=f'run_{time.strftime("%Y%m%d_%H%M%S")}', help='A name for this training run')
-    
-    # 模型参数
-    parser.add_argument('--vocab_size', type=int, default=50304, help='Vocabulary size (GPT-2 has 50257, but we use a larger one for padding)')
-    parser.add_argument('--block_size', type=int, default=1024, help='Context length')
-    parser.add_argument('--n_layer', type=int, default=12, help='Number of transformer layers')
-    parser.add_argument('--n_head', type=int, default=12, help='Number of attention heads')
-    parser.add_argument('--n_embd', type=int, default=768, help='Embedding dimension')
-
-    # 训练和优化器参数
-    parser.add_argument('--batch_size', type=int, default=12, help='Batch size')
-    parser.add_argument('--max_iters', type=int, default=600000, help='Total number of training iterations')
-    parser.add_argument('--learning_rate', type=float, default=6e-4, help='Max learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay')
-    parser.add_argument('--grad_clip', type=float, default=1.0, help='Gradient clipping value')
-    
-    # LR Scheduler
-    parser.add_argument('--lr_decay_iters', type=int, default=600000, help='Iterations for learning rate decay (usually same as max_iters)')
-    parser.add_argument('--min_lr', type=float, default=6e-5, help='Minimum learning rate')
 
     # 日志和评估
     parser.add_argument('--eval_interval', type=int, default=2000, help='How often to evaluate')
-    parser.add_argument('--log_interval', type=int, default=10, help='How often to log training status')
-    parser.add_argument('--eval_iters', type=int, default=200, help='Number of batches for evaluation')
+    parser.add_argument('--log_interval', type=int, default=10, help='每隔多少步打印一次日志')
+    parser.add_argument('--eval_iters', type=int, default=200, help='验证时跑多少个 batch 来估算 loss')
+    parser.add_argument('--save_iters', type=int, default=10, help='保存间隔')
     
     # 运行环境
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help='Device to use for training')
+    parser.add_argument('--dtype', type=str, default='bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16', help='Data type to use for training')
     parser.add_argument('--resume', action='store_true', help='Resume training from checkpoint')
 
     return parser.parse_args()
+
+@dataclass
+class TrainingConfig:
+    # --- 模型参数 ---
+    vocab_size: int = 10000      # 词汇表数量
+    context_length: int = 16     # 一次处理的最大token数
+    d_model: int = 64            # 特征维度（嵌入模型维度及其他层）
+    num_layers: int = 3        # Transformer层的数量
+    num_heads: int = 4       # 多头注意力头数
+    d_ff: int = 128              # 前馈神经网络的维度
+    rope_theta: float = 10000.0        # rope旋转位置编码的theta值
+
+    # --- 训练和优化器参数 ---
+    batch_size: int = 16        # 训练 batch size
+    max_iters: int = 600000     # 总迭代次数
+    learning_rate: float = 0.001 # max learning rate
+    weight_decay: float = 0.01
+    beta1: float = 0.9      # 一阶矩系数
+    beta2: float = 0.99     # 二阶矩系数
+    eps: float= 1e-8
+    max_norm: float = 0.01      # 梯度裁剪的最大二范数
+    
+    # --- 学习率调度 ---
+    min_lr: float = 0.0001      # 最小学习率 (通常是 lr 的 10%)
+    warmup_iters: int = 100    # 预热步数
+    cosine_cycle_iters: int = 1000   # cos步数
+    
+    # --- 数据和路径 ---
+    data_dir: str = 'data' # 数据路径
+    checkpoint_dir: str = 'checkpoints' # 检查点路径
+    run_name: str = f'run_{time.strftime("%Y%m%d_%H%M%S")}' # 训练任务的名称
+
+    # --- 日志和评估 ---
+    eval_interval: int = 2000   # 每隔多少步验证一次
+    log_interval: int = 100     # 每隔多少步打印一次日志
+    eval_iters: int = 200       # 验证时跑多少个 batch 来估算 loss
+    always_save_checkpoint: bool = True # 是否总是保存最好的模型
+
+    # --- 运行环境 ---
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
+    resume: bool = False 
 
 # --- 2. 高效数据加载 (Data Loading) ---
 def get_batch(split, data, block_size, batch_size, device):
@@ -102,13 +122,13 @@ def estimate_loss(model, data, block_size, batch_size, device, eval_iters):
             X, Y = get_batch(split, data, block_size, batch_size, device)
             _, loss = model(X, Y)
             losses[k] = loss.item()
-        out[split = losses.mean()
+        out[split] = losses.mean()
     model.train() # 重新设置为训练模式
     return out
 
 def main():
     args = get_args()
-    
+    args = TrainingConfig()
     # --- 设置 ---
     torch.manual_seed(1337)
     os.makedirs(os.path.join(args.checkpoint_dir, args.run_name), exist_ok=True)
@@ -121,19 +141,12 @@ def main():
     print(f"Train data size: {len(train_data)}, Val data size: {len(val_data)}")
 
     # --- 模型初始化 ---
-    model_config = ModelConfig(
-        vocab_size=args.vocab_size, 
-        block_size=args.block_size, 
-        n_layer=args.n_layer, 
-        n_head=args.n_head, 
-        n_embd=args.n_embd
-    )
-    model = TransformerLM(model_config)
+    model = TransformerLM(vocab_size=args.vocab_size,context_length=args.context_length,d_model=args.d_model,num_layers=args.num_layers,num_heads=args.num_heads,d_ff=args.d_ff,rope_theta=args.rope_theta)
     model.to(args.device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f} M")
 
     # --- 优化器和学习率调度器 ---
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, betas=(0.9, 0.95))
+    optimizer = AdamW(model.parameters(), lr=args.learning_rate,weight_decay=args.weight_decay, betas=(args.beta1, args.beta2),eps=args.eps)
     scheduler = CosineAnnealingLR(optimizer, T_max=args.lr_decay_iters, eta_min=args.min_lr)
 
     # --- Checkpoint 加载 ---
@@ -160,7 +173,7 @@ def main():
             losses = estimate_loss(model, data, args.block_size, args.batch_size, args.device, args.eval_iters)
             print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 
-            if losses['val' < best_val_loss:
+            if losses['val'] < best_val_loss:
                 best_val_loss = losses['val']
                 print(f"New best val loss: {best_val_loss:.4f}. Saving checkpoint...")
                 checkpoint = {
@@ -193,7 +206,7 @@ def main():
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
-            lr = scheduler.get_last_lr()[0
+            lr = scheduler.get_last_lr()[0]
             print(f"iter {iter_num}: loss {loss.item():.4f}, time {dt*1000:.2f}ms, lr {lr:.6f}")
 
         iter_num += 1
