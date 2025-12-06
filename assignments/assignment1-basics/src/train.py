@@ -126,7 +126,18 @@ def estimate_loss(model, data, block_size, batch_size, device, eval_iters):
     model.train() # 重新设置为训练模式
     return out
 
+def create_test_data():
+    # 创建一个新的 400MB 的.npy文件，并写入数据
+    filename = 'data/train.bin'
+    # 'w+' 模式：如果文件不存在则创建，如果存在则清空。用于读写。
+    mmap_array = np.memmap(filename, dtype=np.uint16, mode='w+', shape=(100, 1000, 1000))
+
+    filename = 'data/val.bin'
+    # 'w+' 模式：如果文件不存在则创建，如果存在则清空。用于读写。
+    mmap_array = np.memmap(filename, dtype=np.uint16, mode='w+', shape=(10, 1000, 1000))
+
 def main():
+    # create_test_data()
     args = get_args()
     args = TrainingConfig()
     # --- 设置 ---
