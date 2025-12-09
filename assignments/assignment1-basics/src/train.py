@@ -9,7 +9,6 @@ import torch
 import torch.nn as nn
 from transformer import *
 from utils import *
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 # --- 1. 参数配置 (Configuration) ---
 def get_args():
@@ -80,9 +79,9 @@ class TrainingConfig:
     
     # --- 学习率调度 ---
     min_lr: float = 0.0001      # 最小学习率 (通常是 lr 的 10%)
-    warmup_iters: int = 100    # 预热步数
-    cosine_cycle_iters: int = 1000   # cos步数
-    
+    warmup_iters: int = 1000    # 预热步数
+    cosine_cycle_iters: int = 10000   # cos步数
+
     # --- 数据和路径 ---
     data_dir: str = 'data' # 数据路径
     checkpoint_dir: str = 'checkpoints' # 检查点路径
@@ -147,7 +146,7 @@ def main():
 
     # --- 优化器和学习率调度器 ---
     optimizer = AdamW(model.parameters(), lr=args.learning_rate,weight_decay=args.weight_decay, betas=(args.beta1, args.beta2),eps=args.eps)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.learning_rate, eta_min=args.min_lr)
+    scheduler = CosineAnnealingScheduler(optimizer, warmup_iters=args.warmup_iters, cosine_cycle_iters=args.cosine_cycle_iters, min_lr=args.min_lr)
 
     # --- Checkpoint 加载 ---
     checkpoint_path = os.path.join(args.checkpoint_dir, args.run_name, 'ckpt.pt')
@@ -204,8 +203,8 @@ def main():
         loss.backward()
         
         # --- 梯度裁剪 ---
-        if args.grad_clip > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+        if args.max_norm > 0:
+            gradient_clipping(model.parameters(), args.max_norm)
         
         optimizer.step()
         

@@ -4,6 +4,7 @@ import math
 from collections.abc import Callable, Iterable
 from typing import Optional
 import numpy as np
+import warnings
 
 def softmax(in_features: Tensor, dim: int) -> Tensor:
     max_ele=torch.max(in_features)
@@ -293,3 +294,24 @@ def save_checkpoint(
     # torch.save 可以智能地处理文件路径或文件对象
     torch.save(checkpoint, out)
 
+class CosineAnnealingScheduler(torch.optim.lr_scheduler.LRScheduler):
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        warmup_iters: int ,    # 预热步数
+        cosine_cycle_iters: int ,  # cos步数
+        min_lr: float = 0.0,
+        last_epoch: int = -1,
+        verbose="deprecated",
+    ):  # noqa: D107
+        self.warmup_iters = warmup_iters
+        self.cosine_cycle_iters=cosine_cycle_iters
+        self.min_lr = min_lr
+        super().__init__(optimizer, last_epoch, verbose)
+    
+    def get_lr(self):
+        """Retrieve the learning rate of each parameter group."""
+        return [
+            get_lr_cosine_schedule(self.last_epoch,base_lr,self.min_lr,self.warmup_iters,self.cosine_cycle_iters)
+            for base_lr in self.base_lrs
+        ]
