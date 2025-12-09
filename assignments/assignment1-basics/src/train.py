@@ -95,21 +95,10 @@ class TrainingConfig:
     always_save_checkpoint: bool = True # 是否总是保存最好的模型
 
     # --- 运行环境 ---
-    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    #device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device: str = 'cpu'
     dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
     resume: bool = False 
-
-# --- 2. 高效数据加载 (Data Loading) ---
-def get_batch(split, data, block_size, batch_size, device):
-    d = data[split]
-    ix = torch.randint(len(d) - block_size, (batch_size,))
-    x = torch.stack([torch.from_numpy(d[i:i+block_size].astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy(d[i+1:i+1+block_size].astype(np.int64)) for i in ix])
-    if 'cuda' in device:
-        # pin_memory makes transferring to GPU faster
-        return x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-    else:
-        return x.to(device), y.to(device)
 
 # --- 3. 评估函数 (Evaluation Function) ---
 @torch.no_grad()
@@ -158,7 +147,7 @@ def main():
 
     # --- 优化器和学习率调度器 ---
     optimizer = AdamW(model.parameters(), lr=args.learning_rate,weight_decay=args.weight_decay, betas=(args.beta1, args.beta2),eps=args.eps)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.lr_decay_iters, eta_min=args.min_lr)
+    scheduler = CosineAnnealingLR(optimizer, T_max=args.learning_rate, eta_min=args.min_lr)
 
     # --- Checkpoint 加载 ---
     checkpoint_path = os.path.join(args.checkpoint_dir, args.run_name, 'ckpt.pt')
@@ -167,6 +156,7 @@ def main():
 
     if args.resume and os.path.exists(checkpoint_path):
         print(f"Resuming from checkpoint: {checkpoint_path}")
+        #iter_num=load_checkpoint(checkpoint_path,model,optimizer)
         checkpoint = torch.load(checkpoint_path, map_location=args.device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -175,17 +165,26 @@ def main():
         best_val_loss = checkpoint['best_val_loss']
 
     # --- 训练循环 ---
-    X, Y = get_batch('train', data, args.block_size, args.batch_size, args.device) # 预取第一批数据
+    X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
+    X_val, Y_val = get_batch(data['val'], args.context_length, args.batch_size, args.device) 
+    X_train.to(args.device)
+    Y_train.to(args.device)
+    X_val.to(args.device)
+    Y_val.to(args.device)
     t0 = time.time()
-    
+
     while iter_num < args.max_iters:
         # --- 评估和保存Checkpoint ---
         if iter_num % args.eval_interval == 0 and iter_num > 0:
-            losses = estimate_loss(model, data, args.block_size, args.batch_size, args.device, args.eval_iters)
-            print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+            model.eval()
+            with torch.no_grad():
+                pred_val = model(X_val)
+                val_loss = cross_entropy(pred_val.view(-1, pred_val.size(-1)), Y_val.view(-1))
+            model.train()
+            print(f"step {iter_num}: val loss {val_loss:.4f}")
 
-            if losses['val'] < best_val_loss:
-                best_val_loss = losses['val']
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 print(f"New best val loss: {best_val_loss:.4f}. Saving checkpoint...")
                 checkpoint = {
                     'model_state_dict': model.state_dict(),
@@ -198,7 +197,8 @@ def main():
                 torch.save(checkpoint, checkpoint_path)
 
         # --- 前向和后向传播 ---
-        logits, loss = model(X, Y)
+        pred = model(X_train)
+        loss = cross_entropy(pred.view(-1, pred.size(-1)), Y_train.view(-1))
         
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -221,7 +221,9 @@ def main():
             print(f"iter {iter_num}: loss {loss.item():.4f}, time {dt*1000:.2f}ms, lr {lr:.6f}")
 
         iter_num += 1
-        X, Y = get_batch('train', data, args.block_size, args.batch_size, args.device) # 预取下一批数据
+        X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
+        X_train.to(args.device)
+        Y_train.to(args.device)
 
 if __name__ == '__main__':
     main()
