@@ -131,6 +131,7 @@ class MultiHeadAttenRoPE(nn.Module):
         self.k_proj_weight=Linear(d_model,d_model,device,dtype)
         self.v_proj_weight=Linear(d_model,d_model,device,dtype)
         self.o_proj_weight=Linear(d_model,d_model,device,dtype)
+        self.device=device
     def forward(self,input: Tensor,token_positions:Tensor=None):
         batch,seq_len,_=input.shape
         Q=self.q_proj_weight.forward(input)
@@ -141,7 +142,7 @@ class MultiHeadAttenRoPE(nn.Module):
         multi_k=K.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
         multi_k=self.rope.forward(multi_k,token_positions)
         multi_v=V.contiguous().view(batch,seq_len,self.num_heads,self.d_model//self.num_heads).transpose(1,2)
-        mask=torch.tril(torch.ones(seq_len, seq_len)).bool()
+        mask=torch.tril(torch.ones(seq_len, seq_len)).bool().to(self.device)
         attn_qkv=scaled_dot_product_attention(multi_q,multi_k,multi_v,mask)
         attn_qkv=attn_qkv.transpose(1,2).contiguous().view(batch,seq_len,-1)
         return self.o_proj_weight.forward(attn_qkv)
@@ -159,12 +160,12 @@ class TransformerBlock(nn.Module):
         return ret_block_ffn
 
 class TransformerLM(nn.Module):
-    def __init__(self, vocab_size: int,context_length: int,d_model: int,num_layers: int,num_heads: int,d_ff: int,rope_theta: float):
+    def __init__(self, vocab_size: int,context_length: int,d_model: int,num_layers: int,num_heads: int,d_ff: int,rope_theta: float,device='cpu'):
         super().__init__()
-        self.embedding=Embedding(vocab_size,d_model)
-        self.tfm_block_list=nn.ModuleList([TransformerBlock(d_model,num_heads,d_ff,context_length,rope_theta) for i in range(num_layers)])
-        self.norm=RMSNorm(d_model)
-        self.linear=Linear(d_model,vocab_size)
+        self.embedding=Embedding(vocab_size,d_model,device)
+        self.tfm_block_list=nn.ModuleList([TransformerBlock(d_model,num_heads,d_ff,context_length,rope_theta,device) for i in range(num_layers)])
+        self.norm=RMSNorm(d_model,device=device)
+        self.linear=Linear(d_model,vocab_size,device)
     
     def forward(self,in_indices:Tensor):
         features=self.embedding(in_indices)

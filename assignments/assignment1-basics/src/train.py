@@ -2,7 +2,9 @@ import os
 import time
 import argparse
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass,asdict
+import wandb
+from dotenv import load_dotenv
 
 import numpy as np
 import torch
@@ -48,6 +50,7 @@ def get_args():
     parser.add_argument('--log_interval', type=int, default=10, help='每隔多少步打印一次日志')
     parser.add_argument('--eval_iters', type=int, default=200, help='验证时跑多少个 batch 来估算 loss')
     parser.add_argument('--save_iters', type=int, default=10, help='保存间隔')
+    parser.add_argument('--use_wandb', type=bool, default=True, help='是否使用wandb记录日志')
     
     # 运行环境
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help='Device to use for training')
@@ -92,6 +95,7 @@ class TrainingConfig:
     log_interval: int = 100     # 每隔多少步打印一次日志
     eval_iters: int = 200       # 验证时跑多少个 batch 来估算 loss
     always_save_checkpoint: bool = True # 是否总是保存最好的模型
+    use_wandb: bool = True #是否使用wandb保存日志
 
     # --- 运行环境 ---
     #device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -125,9 +129,26 @@ def create_test_data():
     mmap_array = np.memmap(filename, dtype=np.uint16, mode='w+', shape=(10, 1000, 1000))
 
 def main():
+    
+    # 读取环境变量
+    load_dotenv()
+    
     # create_test_data()
-    args = get_args()
+    args_cli = get_args()
     args = TrainingConfig()
+    for key, value in vars(args_cli).items():
+        # 如果命令行传了值（不是 None），且 config 中确实有这个属性
+        if value is not None and hasattr(args, key):
+            setattr(args, key, value)
+            print(f"Overriding {key} to {value}")
+
+    if args.use_wandb:
+        wandb.login(key=os.getenv('WANDB_API_KEY'))
+        wandb.init(
+            project='CS336_TransformerLM',
+            name=args.run_name,
+            config=asdict(args) # 将所有超参数上传
+        )
     # --- 设置 ---
     torch.manual_seed(1337)
     os.makedirs(os.path.join(args.checkpoint_dir, args.run_name), exist_ok=True)
@@ -140,9 +161,13 @@ def main():
     print(f"Train data size: {len(train_data)}, Val data size: {len(val_data)}")
 
     # --- 模型初始化 ---
-    model = TransformerLM(vocab_size=args.vocab_size,context_length=args.context_length,d_model=args.d_model,num_layers=args.num_layers,num_heads=args.num_heads,d_ff=args.d_ff,rope_theta=args.rope_theta)
-    model.to(args.device)
+    model = TransformerLM(vocab_size=args.vocab_size,context_length=args.context_length,d_model=args.d_model,num_layers=args.num_layers,num_heads=args.num_heads,d_ff=args.d_ff,rope_theta=args.rope_theta,device=args.device)
+
     print(f"Model parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f} M")
+
+    # 监控模型梯度
+    if args.use_wandb:
+        wandb.watch(model, log="gradients", log_freq=args.log_interval)
 
     # --- 优化器和学习率调度器 ---
     optimizer = AdamW(model.parameters(), lr=args.learning_rate,weight_decay=args.weight_decay, betas=(args.beta1, args.beta2),eps=args.eps)
@@ -181,6 +206,11 @@ def main():
                 val_loss = cross_entropy(pred_val.view(-1, pred_val.size(-1)), Y_val.view(-1))
             model.train()
             print(f"step {iter_num}: val loss {val_loss:.4f}")
+             # WandB 记录评估 Loss
+            if args.use_wandb:
+                wandb.log({
+                    "val/loss": val_loss,
+                }, step=iter_num)
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -219,10 +249,19 @@ def main():
             lr = scheduler.get_last_lr()[0]
             print(f"iter {iter_num}: loss {loss.item():.4f}, time {dt*1000:.2f}ms, lr {lr:.6f}")
 
+            # WandB 记录训练指标
+            if args.use_wandb:
+                wandb.log({
+                    "train/loss": loss.item(),
+                    "lr": lr,
+                    "ms_per_iter": dt * 1000,
+                }, step=iter_num)
         iter_num += 1
         X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
         X_train.to(args.device)
         Y_train.to(args.device)
 
+    if args.use_wandb:
+        wandb.finish()
 if __name__ == '__main__':
     main()

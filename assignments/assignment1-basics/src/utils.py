@@ -307,7 +307,7 @@ class CosineAnnealingScheduler(torch.optim.lr_scheduler.LRScheduler):
         self.warmup_iters = warmup_iters
         self.cosine_cycle_iters=cosine_cycle_iters
         self.min_lr = min_lr
-        super().__init__(optimizer, last_epoch, verbose)
+        super().__init__(optimizer, last_epoch)
     
     def get_lr(self):
         """Retrieve the learning rate of each parameter group."""
