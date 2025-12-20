@@ -157,7 +157,7 @@ FFN
 - softmax:输入实数向量，输出每个元素的概率，所有元素概率和为1；为什么使用e^x计算概率分布，而不是直接计算或用x^2的其他函数，1 输出为正数，输入正负都可以 2 函数单调 3 容易求导
 
 
-### 3.6 The Full Transformer LM
+## 3.6 The Full Transformer LM
 1. 参数量：2,127,057,600   单精度需要的存储空间为：7.92 Gb
 vocab_size x d_model + num_layers(2 x d_model + 4 x d_model x d_model + 3 x d_model x d_ff) + d_model + vocab_size x d_model
 2. 计算方法如下，正确性未知；d_model比较大时Linear计算量多，seq_len大时，scaled_dot_product_attention计算量大
@@ -178,7 +178,7 @@ TransformerLM
     Linear:batch*seq_len*2*d_model*vocab_size
 ```
     
-### 4.1 Cross-entropy loss
+## 4.1 Cross-entropy loss
 - 公式：loss = ∑-P_tar[i]*log(P_pred[i]) 
 - 单目标公式：对于单目标而言，tar向量只有一个位置是1，其他均为0，公式变为-log(P_pred[i])
 - 实际实现：
@@ -187,3 +187,9 @@ TransformerLM
     3 公式简化：-log(e^pred[t]/(∑ e^pred[i])) = log(∑ e^pred[i]) - pred[t]
     4 为防止e^pred[i]超下界后，计算均值为-inf，计算均值时，只计算结果不为-inf的数据
 - 总是数值出范围：原因是torch.max求取了全局最大值而不是每个batch的最大值
+
+## 6 Generating text
+- Temperature（温度系数）参与运算的方式：
+<img src="./resources/Temperature.png" style="width: auto; height: 50;">
+- 含义：温度系数的理论范围是(0, inf)，主流工业标准范围是[0,2]，当 t < 1 时，除以t会放大候选分数之间的差距（e^x函数的梯度变化是x越大梯度越大，越小梯度越小），高分更高，低分更低，模型变得更确定，倾向于选择最高概率词，减少随机性。
+当 t > 1 时，除以t会缩小候选分数之间的差距，数值趋于平缓，模型变得更多样、更具创造力，非最高概率词获得更多被选中的机会。
