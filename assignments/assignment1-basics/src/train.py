@@ -17,7 +17,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Train a Transformer Language Model')
 
     # 模型参数
-    parser.add_argument('--vocab_size', type=int, default=10000, help='词汇表数量')
+    parser.add_argument('--vocab_size', type=int, default=50257, help='词汇表数量')
     parser.add_argument('--context_length', type=int, default=16, help='一次处理的最大token数')
     parser.add_argument('--d_model', type=int, default=64, help='特征维度（嵌入模型维度及其他层）')
     parser.add_argument('--num_layers', type=int, default=3, help='Transformer层的数量')
@@ -50,7 +50,7 @@ def get_args():
     parser.add_argument('--log_interval', type=int, default=10, help='每隔多少步打印一次日志')
     parser.add_argument('--eval_iters', type=int, default=200, help='验证时跑多少个 batch 来估算 loss')
     parser.add_argument('--save_iters', type=int, default=10, help='保存间隔')
-    parser.add_argument('--use_wandb', type=bool, default=True, help='是否使用wandb记录日志')
+    parser.add_argument('--use_wandb', type=bool, default=False, help='是否使用wandb记录日志')
     
     # 运行环境
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help='Device to use for training')
@@ -62,7 +62,7 @@ def get_args():
 @dataclass
 class TrainingConfig:
     # --- 模型参数 ---
-    vocab_size: int = 10000      # 词汇表数量
+    vocab_size: int = 50257      # 词汇表数量
     context_length: int = 16     # 一次处理的最大token数
     d_model: int = 64            # 特征维度（嵌入模型维度及其他层）
     num_layers: int = 3        # Transformer层的数量
@@ -95,7 +95,7 @@ class TrainingConfig:
     log_interval: int = 100     # 每隔多少步打印一次日志
     eval_iters: int = 200       # 验证时跑多少个 batch 来估算 loss
     always_save_checkpoint: bool = True # 是否总是保存最好的模型
-    use_wandb: bool = True #是否使用wandb保存日志
+    use_wandb: bool = False #是否使用wandb保存日志
 
     # --- 运行环境 ---
     #device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -155,8 +155,8 @@ def main():
     
     # --- 数据加载 ---
     print("Loading data...")
-    train_data = np.memmap(os.path.join(args.data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-    val_data = np.memmap(os.path.join(args.data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    train_data = np.memmap(os.path.join(args.data_dir, 'train_hf.bin'), dtype=np.uint16, mode='r')
+    val_data = np.memmap(os.path.join(args.data_dir, 'val_hf.bin'), dtype=np.uint16, mode='r')
     data = {'train': train_data, 'val': val_data}
     print(f"Train data size: {len(train_data)}, Val data size: {len(val_data)}")
 

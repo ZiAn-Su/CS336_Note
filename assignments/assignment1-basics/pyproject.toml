@@ -19,6 +19,7 @@ dependencies = [
     "wandb>=0.19.7",
     "ty>=0.0.1a16",
     "python-dotenv>=1.2.1",
+    "transformers>=4.57.3",
 ]
 
 [build-system]
