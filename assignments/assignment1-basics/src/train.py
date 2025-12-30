@@ -63,11 +63,11 @@ def get_args():
 class TrainingConfig:
     # --- 模型参数 ---
     vocab_size: int = 50257      # 词汇表数量
-    context_length: int = 16     # 一次处理的最大token数
-    d_model: int = 64            # 特征维度（嵌入模型维度及其他层）
+    context_length: int = 512     # 一次处理的最大token数
+    d_model: int = 256            # 特征维度（嵌入模型维度及其他层）
     num_layers: int = 3        # Transformer层的数量
-    num_heads: int = 4       # 多头注意力头数
-    d_ff: int = 128              # 前馈神经网络的维度
+    num_heads: int = 8       # 多头注意力头数
+    d_ff: int = 512              # 前馈神经网络的维度
     rope_theta: float = 10000.0        # rope旋转位置编码的theta值
 
     # --- 训练和优化器参数 ---
@@ -98,8 +98,8 @@ class TrainingConfig:
     use_wandb: bool = False #是否使用wandb保存日志
 
     # --- 运行环境 ---
-    #device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device: str = 'cpu'
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    #device: str = 'cpu'
     dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
     resume: bool = False 
 
@@ -136,11 +136,11 @@ def main():
     # create_test_data()
     args_cli = get_args()
     args = TrainingConfig()
-    for key, value in vars(args_cli).items():
-        # 如果命令行传了值（不是 None），且 config 中确实有这个属性
-        if value is not None and hasattr(args, key):
-            setattr(args, key, value)
-            print(f"Overriding {key} to {value}")
+    # for key, value in vars(args_cli).items():
+    #     # 如果命令行传了值（不是 None），且 config 中确实有这个属性
+    #     if value is not None and hasattr(args, key):
+    #         setattr(args, key, value)
+    #         print(f"Overriding {key} to {value}")
 
     if args.use_wandb:
         wandb.login(key=os.getenv('WANDB_API_KEY'))
@@ -191,10 +191,10 @@ def main():
     # --- 训练循环 ---
     X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
     X_val, Y_val = get_batch(data['val'], args.context_length, args.batch_size, args.device) 
-    X_train.to(args.device)
-    Y_train.to(args.device)
-    X_val.to(args.device)
-    Y_val.to(args.device)
+    X_train = X_train.to(args.device)
+    Y_train = Y_train.to(args.device)
+    X_val = X_val.to(args.device)
+    Y_val = Y_val.to(args.device)
     t0 = time.time()
 
     while iter_num < args.max_iters:

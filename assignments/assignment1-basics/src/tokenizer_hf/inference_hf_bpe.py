@@ -10,7 +10,7 @@ def encode_file_hf(input_file, output_file, model_name="gpt2", batch_size=10000)
     # 1. 加载 Tokenizer
     # use_fast=True 是默认的，但显式指定以确保使用 Rust 后端
     print(f"Loading tokenizer: {model_name}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_name,cache_dir='checkpoints/gpt2', use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name,cache_dir='checkpoints/gpt2',local_files_only=True, use_fast=True)
     
     # 检查是否确实是 Fast Tokenizer
     if not tokenizer.is_fast:
