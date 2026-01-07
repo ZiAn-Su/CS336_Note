@@ -189,14 +189,26 @@ TransformerLM
 - 总是数值出范围：原因是torch.max求取了全局最大值而不是每个batch的最大值
 
 ## 6 Generating text
-- Temperature（温度系数）参与运算的方式：
-<img src="./resources/Temperature.png" style="width: auto; height: 50;">
+- Temperature（温度系数）参与运算的方式：   
+<img src="./resources/Temperature.png" style="width: auto; height: 50;">     
 - 含义：温度系数的理论范围是(0, inf)，主流工业标准范围是[0,2]，当 t < 1 时，除以t会放大候选分数之间的差距（e^x函数的梯度变化是x越大梯度越大，越小梯度越小），高分更高，低分更低，模型变得更确定，倾向于选择最高概率词，减少随机性。
 当 t > 1 时，除以t会缩小候选分数之间的差距，数值趋于平缓，模型变得更多样、更具创造力，非最高概率词获得更多被选中的机会。
 
+- Top-P计算方式如下，其中集合V表示概率累计之和>=p的最小集合：
+<img src="./resources/Top-P.jpg" style="width: auto; height: 50;">  
+P = 0.9 - 0.95：工业界最常用的范围。能有效剔除长尾噪声，同时保留足够的多样性。  
+P = 0.5 - 0.8：生成内容会非常集中，适合事实性回答。     
+P = 1.0：相当于没有开启 Top-P 过滤  
+
+- Top-K计算方式为固定选取前K个token。   
+K = 1：等同于贪心搜索（Greedy Search），每次只选概率最大的。    
+K = 10 - 20：生成内容较为保守、严谨。   
+K = 40 - 60：最常用的默认范围（如 GPT-2 默认 K=50），兼顾逻辑与多样性。 
+K > 100：增加随机性，容易出现逻辑错误。 
+
 ### 代码要求
-1 用户输入提示词，生成提示词直到遇到<|endoftext|>
+- 1 用户输入提示词，生成提示词直到遇到<|endoftext|>
     模型生成接入tokenizer
-2 允许控制最大生成数量
-3 能够进行温度控制
-4 能够top-p采样
+- 2 允许控制最大生成数量
+- 3 能够进行温度控制
+- 4 能够top-p采样
