@@ -5,7 +5,7 @@ from src.bpe_tokenizer import BPETokenizer
 from src.transformer import *
 from src.utils import *
 import torch
-from fvcore.nn import FlopCountAnalysis, parameter_count
+#from fvcore.nn import FlopCountAnalysis, parameter_count
 
 def max_token(counts:dict[tuple,int]):
     '''
@@ -212,6 +212,9 @@ def test_count_flops():
     print(f"Parameters: {params['']:,}")
 
 if __name__=="__main__":
+    pred=torch.load('pred.pt')
+    Y_train=torch.load('X_train.pt')
+    print('ok')
     test_count_flops()
     test_count_para()
     # test_npz()

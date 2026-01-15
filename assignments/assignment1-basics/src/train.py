@@ -63,16 +63,16 @@ def get_args():
 class TrainingConfig:
     # --- 模型参数 ---
     vocab_size: int = 50257      # 词汇表数量
-    context_length: int = 512     # 一次处理的最大token数
-    d_model: int = 256            # 特征维度（嵌入模型维度及其他层）
-    num_layers: int = 3        # Transformer层的数量
-    num_heads: int = 8       # 多头注意力头数
-    d_ff: int = 512              # 前馈神经网络的维度
+    context_length: int = 256     # 一次处理的最大token数
+    d_model: int = 512            # 特征维度（嵌入模型维度及其他层）
+    num_layers: int = 4        # Transformer层的数量
+    num_heads: int = 16       # 多头注意力头数
+    d_ff: int = 1344              # 前馈神经网络的维度
     rope_theta: float = 10000.0        # rope旋转位置编码的theta值
 
     # --- 训练和优化器参数 ---
     batch_size: int = 16        # 训练 batch size
-    max_iters: int = 600000     # 总迭代次数
+    max_iters: int = 30000     # 总迭代次数
     learning_rate: float = 0.001 # max learning rate
     weight_decay: float = 0.01
     beta1: float = 0.9      # 一阶矩系数
@@ -91,11 +91,11 @@ class TrainingConfig:
     run_name: str = f'run_{time.strftime("%Y%m%d_%H%M%S")}' # 训练任务的名称
 
     # --- 日志和评估 ---
-    eval_interval: int = 2000   # 每隔多少步验证一次
-    log_interval: int = 100     # 每隔多少步打印一次日志
+    eval_interval: int = 500   # 每隔多少步验证一次
+    log_interval: int = 1     # 每隔多少步打印一次日志
     eval_iters: int = 200       # 验证时跑多少个 batch 来估算 loss
     always_save_checkpoint: bool = True # 是否总是保存最好的模型
-    use_wandb: bool = False #是否使用wandb保存日志
+    use_wandb: bool = True #是否使用wandb保存日志
 
     # --- 运行环境 ---
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -224,7 +224,7 @@ def main():
                     'args': args,
                 }
                 torch.save(checkpoint, checkpoint_path)
-
+        #with torch.autograd.detect_anomaly():
         # --- 前向和后向传播 ---
         pred = model(X_train)
         loss = cross_entropy(pred.view(-1, pred.size(-1)), Y_train.view(-1))

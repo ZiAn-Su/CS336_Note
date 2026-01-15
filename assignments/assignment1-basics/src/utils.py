@@ -7,10 +7,10 @@ import numpy as np
 import warnings
 
 def softmax(in_features: Tensor, dim: int) -> Tensor:
-    max_ele=torch.max(in_features)
+    max_ele = in_features.max(dim=dim, keepdim=True).values
     in_features=in_features-max_ele
     exp_ele=torch.exp(in_features)
-    sum_dim=exp_ele.sum(dim).unsqueeze(dim)
+    sum_dim=exp_ele.sum(dim,keepdim=True)
     return exp_ele/sum_dim
 
 def scaled_dot_product_attention(Q:Tensor,K:Tensor,V:Tensor,mask:Tensor=None):
