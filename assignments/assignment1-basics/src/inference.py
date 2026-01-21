@@ -8,22 +8,15 @@ import torch
 import torch.nn as nn
 from transformer import *
 from utils import *
-from train import TrainingConfig
+from train import ModelConfig,TrainingConfig
 import torch.nn.functional as F
 
 @dataclass
-class InferConfig:
-    vocab_size: int = 50257      # 词汇表数量
-    context_length: int = 512     # 一次处理的最大token数
-    d_model: int = 256            # 特征维度（嵌入模型维度及其他层）
-    num_layers: int = 3        # Transformer层的数量
-    num_heads: int = 8       # 多头注意力头数
-    d_ff: int = 512              # 前馈神经网络的维度
-    rope_theta: float = 10000.0         # rope旋转位置编码的theta值
+class InferConfig(ModelConfig):
     device: str = 'cuda'
     # 新增生成配置
-    max_new_tokens: int = 100  # 最大生成长度
-    temperature: float = 0.8    # 温度采样 (0-1之间，越小越保守，越大越随机)
+    max_new_tokens: int = 200  # 最大生成长度
+    temperature: float = 0.2    # 温度采样 (0-1之间，越小越保守，越大越随机)
     top_p: float = 0.8  # 新增：Top-P 采样阈值 (通常在 0.8-0.95 之间)
     top_k: int = None             # Top-K 采样过滤
 
@@ -74,14 +67,14 @@ def generate(model, idx, max_new_tokens, context_length, temperature=1.0, top_k=
 def main():
     # 读取模型
     cfg=InferConfig()
-    checkpoint_path='checkpoints/run_20251230_080621/ckpt.pt'
+    checkpoint_path='checkpoints/run_20260115_220954/ckpt.pt'
     model = TransformerLM(vocab_size=cfg.vocab_size,context_length=cfg.context_length,d_model=cfg.d_model,num_layers=cfg.num_layers,num_heads=cfg.num_heads,d_ff=cfg.d_ff,rope_theta=cfg.rope_theta,device=cfg.device)
     checkpoint = torch.load(checkpoint_path,weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(cfg.device)
 
     # tokenizer
-    prompt='Once upon a time there was a little boy named Ben. Ben loved to explore'
+    prompt='Once'
     tokenizer = AutoTokenizer.from_pretrained("gpt2",cache_dir='checkpoints/gpt2',local_files_only=True, use_fast=True)
     eos_id = tokenizer.eos_token_id
     encoded_token = tokenizer(prompt, add_special_tokens=False)["input_ids"]

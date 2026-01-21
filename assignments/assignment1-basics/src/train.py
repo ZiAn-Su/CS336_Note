@@ -60,7 +60,7 @@ def get_args():
     return parser.parse_args()
 
 @dataclass
-class TrainingConfig:
+class ModelConfig:
     # --- 模型参数 ---
     vocab_size: int = 50257      # 词汇表数量
     context_length: int = 256     # 一次处理的最大token数
@@ -68,8 +68,10 @@ class TrainingConfig:
     num_layers: int = 4        # Transformer层的数量
     num_heads: int = 16       # 多头注意力头数
     d_ff: int = 1344              # 前馈神经网络的维度
-    rope_theta: float = 10000.0        # rope旋转位置编码的theta值
+    rope_theta: float = 10000.0
 
+@dataclass
+class TrainingConfig(ModelConfig):
     # --- 训练和优化器参数 ---
     batch_size: int = 16        # 训练 batch size
     max_iters: int = 30000     # 总迭代次数
