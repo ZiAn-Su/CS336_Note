@@ -83,9 +83,9 @@ def encode_file_hf(input_file, output_file, model_name="gpt2", batch_size=10000)
 
 if __name__ == "__main__":
     # 1. 准备大文件
-    in_path = "data/TinyStoriesV2-GPT4-train.txt"
+    in_path = "/mnt/e/Cousera/CS336_Note/assignments/assignment1-basics/data/owt_train.txt"
 
     
     # 2. 运行编码 (推荐 gpt2)
     # 第一次运行会自动下载模型
-    encode_file_hf(in_path, "data/train_hf.bin", model_name="gpt2", batch_size=5000)
+    encode_file_hf(in_path, "data/train_owt.bin", model_name="gpt2", batch_size=5000)

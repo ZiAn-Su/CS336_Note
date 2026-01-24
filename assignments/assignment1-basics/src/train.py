@@ -63,11 +63,11 @@ def get_args():
 class ModelConfig:
     # --- 模型参数 ---
     vocab_size: int = 50257      # 词汇表数量
-    context_length: int = 256     # 一次处理的最大token数
-    d_model: int = 512            # 特征维度（嵌入模型维度及其他层）
+    context_length: int = 1024     # 一次处理的最大token数
+    d_model: int = 768            # 特征维度（嵌入模型维度及其他层）
     num_layers: int = 4        # Transformer层的数量
     num_heads: int = 16       # 多头注意力头数
-    d_ff: int = 1344              # 前馈神经网络的维度
+    d_ff: int = 2048              # 前馈神经网络的维度
     rope_theta: float = 10000.0
 
 @dataclass
@@ -105,37 +105,12 @@ class TrainingConfig(ModelConfig):
     dtype: str = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
     resume: bool = False 
 
-# --- 3. 评估函数 (Evaluation Function) ---
-@torch.no_grad()
-def estimate_loss(model, data, block_size, batch_size, device, eval_iters):
-    out = {}
-    model.eval() # 设置为评估模式
-    for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split, data, block_size, batch_size, device)
-            _, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train() # 重新设置为训练模式
-    return out
-
-def create_test_data():
-    # 创建一个新的 400MB 的.npy文件，并写入数据
-    filename = 'data/train.bin'
-    # 'w+' 模式：如果文件不存在则创建，如果存在则清空。用于读写。
-    mmap_array = np.memmap(filename, dtype=np.uint16, mode='w+', shape=(100, 1000, 1000))
-
-    filename = 'data/val.bin'
-    # 'w+' 模式：如果文件不存在则创建，如果存在则清空。用于读写。
-    mmap_array = np.memmap(filename, dtype=np.uint16, mode='w+', shape=(10, 1000, 1000))
 
 def main():
     
     # 读取环境变量
     load_dotenv()
     
-    # create_test_data()
     args_cli = get_args()
     args = TrainingConfig()
     # for key, value in vars(args_cli).items():
@@ -157,7 +132,7 @@ def main():
     
     # --- 数据加载 ---
     print("Loading data...")
-    train_data = np.memmap(os.path.join(args.data_dir, 'train_hf.bin'), dtype=np.uint16, mode='r')
+    train_data = np.memmap(os.path.join(args.data_dir, 'train_owt.bin'), dtype=np.uint16, mode='r')
     val_data = np.memmap(os.path.join(args.data_dir, 'val_hf.bin'), dtype=np.uint16, mode='r')
     data = {'train': train_data, 'val': val_data}
     print(f"Train data size: {len(train_data)}, Val data size: {len(val_data)}")
@@ -191,15 +166,16 @@ def main():
         best_val_loss = checkpoint['best_val_loss']
 
     # --- 训练循环 ---
-    X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
     X_val, Y_val = get_batch(data['val'], args.context_length, args.batch_size, args.device) 
-    X_train = X_train.to(args.device)
-    Y_train = Y_train.to(args.device)
     X_val = X_val.to(args.device)
     Y_val = Y_val.to(args.device)
     t0 = time.time()
 
     while iter_num < args.max_iters:
+        X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
+        X_train.to(args.device)
+        Y_train.to(args.device)
+
         # --- 评估和保存Checkpoint ---
         if iter_num % args.eval_interval == 0 and iter_num > 0:
             model.eval()
@@ -259,9 +235,7 @@ def main():
                     "ms_per_iter": dt * 1000,
                 }, step=iter_num)
         iter_num += 1
-        X_train, Y_train = get_batch(data['train'], args.context_length, args.batch_size, args.device) 
-        X_train.to(args.device)
-        Y_train.to(args.device)
+        
 
     if args.use_wandb:
         wandb.finish()

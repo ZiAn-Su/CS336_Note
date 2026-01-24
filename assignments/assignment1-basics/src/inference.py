@@ -16,7 +16,7 @@ class InferConfig(ModelConfig):
     device: str = 'cuda'
     # 新增生成配置
     max_new_tokens: int = 200  # 最大生成长度
-    temperature: float = 0.2    # 温度采样 (0-1之间，越小越保守，越大越随机)
+    temperature: float = 1.0    # 温度采样 (0-1之间，越小越保守，越大越随机)
     top_p: float = 0.8  # 新增：Top-P 采样阈值 (通常在 0.8-0.95 之间)
     top_k: int = None             # Top-K 采样过滤
 
@@ -67,7 +67,7 @@ def generate(model, idx, max_new_tokens, context_length, temperature=1.0, top_k=
 def main():
     # 读取模型
     cfg=InferConfig()
-    checkpoint_path='checkpoints/run_20260115_220954/ckpt.pt'
+    checkpoint_path='checkpoints/run_20260124_183019/ckpt.pt'
     model = TransformerLM(vocab_size=cfg.vocab_size,context_length=cfg.context_length,d_model=cfg.d_model,num_layers=cfg.num_layers,num_heads=cfg.num_heads,d_ff=cfg.d_ff,rope_theta=cfg.rope_theta,device=cfg.device)
     checkpoint = torch.load(checkpoint_path,weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
