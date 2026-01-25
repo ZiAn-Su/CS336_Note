@@ -1,36 +1,29 @@
 # CS336 Spring 2025 Assignment 1: Basics
-
-For a full description of the assignment, see the assignment handout at
-[cs336_spring2025_assignment1_basics.pdf](./cs336_spring2025_assignment1_basics.pdf)
-
-If you see any issues with the assignment handout or code, please feel free to
-raise a GitHub issue or open a pull request with a fix.
-
-## Setup
-
-### Environment
-We manage our environments with `uv` to ensure reproducibility, portability, and ease of use.
-Install `uv` [here](https://github.com/astral-sh/uv) (recommended), or run `pip install uv`/`brew install uv`.
-We recommend reading a bit about managing projects in `uv` [here](https://docs.astral.sh/uv/guides/projects/#managing-dependencies) (you will not regret it!).
-
-You can now run any code in the repo using
-```sh
-uv run <python_file_path>
+## 文件说明
 ```
-and the environment will be automatically solved and activated when necessary.
+# tokenizer相关
+src/bpe_tokenizer.py：bpe_tokenizer的定义
+src/train_bpe.py：训练bpe tokenizer，vocab: dict[int, bytes]，词汇表，映射token到bytes； merges: list[tuple[bytes, bytes]]：按顺序记录哪些bytes与哪些bytes结合
+src/inference_bpe.py：bpe tokenizer推理
+src/tokenizer_hf/*：huggginface的gpt2 tokenizer
 
-### Run unit tests
-
-
-```sh
-uv run pytest
+# 语言模型相关
+src/utils.py: 通用函数
+src/transformer.py： 模型架构定义
+src/train.py：训练模型
+src/inference.py：模型推理
 ```
 
-Initially, all tests should fail with `NotImplementedError`s.
-To connect your implementation to the tests, complete the
-functions in [./tests/adapters.py](./tests/adapters.py).
-
-### Download data
+## 单元测试
+```
+#单元测试某个文件
+uv run pytest tests/test_train_bpe.py
+#单元测试某个文件的某个函数
+uv run pytest path/to/test_file.py::test_function_name
+# 或
+uv run pytest -k test_function_name
+```
+## Download data
 Download the TinyStories data and a subsample of OpenWebText
 
 ``` sh
