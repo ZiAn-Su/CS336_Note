@@ -1,131 +1,120 @@
+"""并行 BPE 推理编码 (大文件 -> token id 二进制数组)
+
+为什么这样组织:
+- BPETokenizer 对象较大, 通过 pickle 反复跨进程传递很慢. 因此把 tokenizer 放到
+  子进程的全局变量里, 通过 ProcessPoolExecutor 的 initializer 在每个 worker
+  启动时加载一次, 之后所有任务复用.
+- 文件按字节区间均分给各 worker. 为避免边界处一行被两个 chunk 同时处理或漏掉:
+  每个非起始 chunk 先 readline() 跳过半行残端, 后续行属于本 chunk;
+  本 chunk 越界后停止 (越界处的半行交给下一 chunk).
+- worker 内部把读到的行累积到 buffer, 达到阈值再调用 encode 一次, 减少调用开销.
+"""
+
 import os
 import pickle
 import numpy as np
-import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
-import datetime
+
 from src.bpe_tokenizer import BPETokenizer
 
-# --- 全局变量 (用于子进程) ---
-# 为了避免将巨大的Tokenizer对象通过Pickle在进程间反复传递（这非常慢），
-# 我们使用全局变量在每个子进程初始化时加载一次。
-tokenizer = None
+# 子进程全局 tokenizer (init_worker 中初始化)
+_tokenizer: BPETokenizer | None = None
 
-def init_worker(vocab_path, merge_path):
-    """每个子进程启动时运行一次，加载Tokenizer"""
-    global tokenizer
-    with open(vocab_path, 'rb') as f: vocab = pickle.load(f)
-    with open(merge_path, 'rb') as f: merge = pickle.load(f)
-    tokenizer = BPETokenizer(vocab, merge)
 
-def process_chunk(args):
-    """
-    子进程的工作函数：读取指定字节范围的文本并编码
-    """
+def init_worker(vocab_path: str, merge_path: str) -> None:
+    """子进程启动时加载一次 tokenizer."""
+    global _tokenizer
+    with open(vocab_path, "rb") as f:
+        vocab = pickle.load(f)
+    with open(merge_path, "rb") as f:
+        merges = pickle.load(f)
+    _tokenizer = BPETokenizer(vocab, merges)
+
+
+def process_chunk(args) -> np.ndarray:
+    """编码 [start_byte, end_byte) 范围的文本; 行级对齐边界以避免重叠/遗漏."""
     filename, start_byte, end_byte, dtype = args
-    global tokenizer
-    
-    encoded_chunk = []
-    total_bytes=end_byte-start_byte
-    with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
-        # 1. 跳转到指定的起始位置
+    encoded: list[int] = []
+
+    BUFFER_FLUSH = 100_000  # 字符数阈值, 累积到此值再 encode 一次
+
+    with open(filename, "r", encoding="utf-8", errors="ignore") as f:
         f.seek(start_byte)
-        
-        # 2. 如果不是文件的开头，我们要跳过第一行
-        # 原因：这一行的开头部分已经被上一个 chunk 处理了（见下文逻辑）
+        # 不是文件起点时, 跳过本行残端 (上一 chunk 已负责处理)
         if start_byte != 0:
             f.readline()
-        
-        lines=''
-        
-        # 3. 开始读取并编码
-        while True:
-            # 记录当前指针位置
-            curr_pos = f.tell()
-            
-            # 如果当前位置已经超过了分配的结束位置，停止处理
-            # 下一个 chunk 的进程会负责从这里开始读取
-            if curr_pos >= end_byte:
-                if lines:
-                    ids = tokenizer.encode(text)
-                    encoded_chunk.extend(ids)
-                break
-            
+
+        buffer = ""
+        while f.tell() < end_byte:
             line = f.readline()
-            if not line: # 文件结束
-                if lines:
-                    ids = tokenizer.encode(text)
-                    encoded_chunk.extend(ids)
+            if not line:  # EOF
                 break
-                
-            text = line.strip()
-            lines+=text
-            if len(lines)>10000:
-                ids = tokenizer.encode(lines)
-                encoded_chunk.extend(ids)
-                lines=''
-                print(f'processed: {(curr_pos-start_byte)/total_bytes*100 :.2f}%')
-    
-    # 将列表转换为紧凑的 numpy 数组返回
-    return np.array(encoded_chunk, dtype=dtype)
+            buffer += line
+            if len(buffer) >= BUFFER_FLUSH:
+                encoded.extend(_tokenizer.encode(buffer))
+                buffer = ""
+        if buffer:
+            encoded.extend(_tokenizer.encode(buffer))
 
-def encode_large_file_parallel(input_file, output_file, vocab_path, merge_path, chunk_size_mb=20):
-    # 1. 确定数据类型
-    with open(vocab_path, 'rb') as f: vocab_len = len(pickle.load(f))
+    return np.array(encoded, dtype=dtype)
+
+
+def encode_large_file_parallel(
+    input_file: str,
+    output_file: str,
+    vocab_path: str,
+    merge_path: str,
+    chunk_size_mb: int = 20,
+) -> None:
+    """大文件并行编码, 输出 token id 二进制数组 + .meta 元信息."""
+    with open(vocab_path, "rb") as f:
+        vocab_len = len(pickle.load(f))
     dtype = np.uint16 if vocab_len < 65535 else np.uint32
-    dtype_size = 2 if dtype == np.uint16 else 4
-    print(f"Vocab size: {vocab_len}, using dtype: {dtype}")
+    print(f"Vocab size: {vocab_len}, dtype: {np.dtype(dtype).name}")
 
-    # 2. 计算文件分块
     file_size = os.path.getsize(input_file)
-    chunk_size = chunk_size_mb * 1024 * 1024 # 转换 MB 到 Bytes
-    
-    # 生成任务列表：每个任务是一个元组 (start, end)
+    chunk_bytes = chunk_size_mb * 1024 * 1024
     chunks = []
     start = 0
     while start < file_size:
-        end = min(start + chunk_size, file_size)
+        end = min(start + chunk_bytes, file_size)
         chunks.append((input_file, start, end, dtype))
         start = end
-    
-    print(f"Split file into {len(chunks)} chunks. Processing with {os.cpu_count()} cores...")
+    print(f"Split into {len(chunks)} chunks, using {os.cpu_count()} cores...")
 
-    # 3. 并行处理与写入
-    # 使用 'wb' 模式打开输出文件
     total_tokens = 0
-    
-    with open(output_file, 'wb') as f_out:
-        # max_workers=None 默认使用 CPU 核心数
-        with ProcessPoolExecutor(initializer=init_worker, initargs=(vocab_path, merge_path)) as executor:
-            # map 会保证结果按输入 chunks 的顺序返回，这对于保持文本顺序至关重要
-            results = executor.map(process_chunk, chunks)
-            
-            # 使用 tqdm 显示进度
-            for chunk_arr in tqdm(results, total=len(chunks), desc="Encoding Parallel"):
-                # 写入二进制
-                f_out.write(chunk_arr.tobytes())
-                total_tokens += len(chunk_arr)
+    with open(output_file, "wb") as f_out, ProcessPoolExecutor(
+        initializer=init_worker, initargs=(vocab_path, merge_path)
+    ) as executor:
+        # executor.map 保证按输入顺序返回结果, 即可保持原始文本顺序
+        for chunk_arr in tqdm(
+            executor.map(process_chunk, chunks),
+            total=len(chunks),
+            desc="Encoding",
+        ):
+            f_out.write(chunk_arr.tobytes())
+            total_tokens += len(chunk_arr)
 
-    print(f"Done! Total tokens: {total_tokens}")
-    print(f"Output size: {os.path.getsize(output_file) / (1024**3):.2f} GB")
+    print(
+        f"Done. Total tokens: {total_tokens}, "
+        f"output: {os.path.getsize(output_file) / (1024**3):.2f} GB"
+    )
 
-    # 4. 保存元数据
     meta = {
-        'dtype': 'uint16' if dtype == np.uint16 else 'uint32',
-        'vocab_size': vocab_len,
-        'total_tokens': total_tokens
+        "dtype": np.dtype(dtype).name,
+        "vocab_size": vocab_len,
+        "total_tokens": total_tokens,
     }
-    with open(f'{output_file}.meta', 'wb') as f:
+    with open(f"{output_file}.meta", "wb") as f:
         pickle.dump(meta, f)
 
+
 if __name__ == "__main__":
-    # 配置路径
     in_path = "data/TinyStoriesV2-GPT4-train.txt"
     out_path = "data/train.bin"
-    v_path = 'data/TinyStoriesV2-GPT4-train_vocab.pkl'
-    m_path = 'data/TinyStoriesV2-GPT4-train_merge.pkl'
+    v_path = "data/TinyStoriesV2-GPT4-train_vocab.pkl"
+    m_path = "data/TinyStoriesV2-GPT4-train_merge.pkl"
 
-    # 运行并行编码
-    # chunk_size_mb 可以根据内存调整，通常 10MB - 100MB 比较合适
-    encode_large_file_parallel(in_path, out_path, v_path, m_path, chunk_size_mb=1)
+    # chunk_size_mb 视内存调整, 通常 10MB - 100MB 较合适
+    encode_large_file_parallel(in_path, out_path, v_path, m_path, chunk_size_mb=10)
